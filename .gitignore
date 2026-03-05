@@ -1,0 +1,50 @@
+# 核心安全
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+/tmp/*.md
+inbox.md
+
+# Rust & Cargo
+target/
+**/*.rs.bk
+
+# Node.js
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/test-results/
+web/*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Android & Kotlin
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.iml
+android/.cxx/
+android/.idea/
+
+# Vim / Neovim 临时文件
+*.swp
+*.swo
+*~
+
+# VSCode / IntelliJ
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# OS (macOS / Windows)
+.DS_Store
+Thumbs.db
+Desktop.ini

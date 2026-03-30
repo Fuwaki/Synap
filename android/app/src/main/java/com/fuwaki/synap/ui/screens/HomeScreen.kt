@@ -1,14 +1,22 @@
 package com.fuwaki.synap.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
@@ -37,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.fuwaki.synap.ui.components.NoteCardItem
 import com.fuwaki.synap.ui.model.Note
@@ -55,11 +64,18 @@ fun HomeScreen(
     onReplyToNote: (String, String) -> Unit,
     onToggleDeleted: (Note) -> Unit,
     onToggleDeletedFeed: () -> Unit,
-    onOpenSearch: () -> Unit, // 现在只需要这个参数来跳转到搜索页
+    onOpenSearch: () -> Unit,
     onLoadMore: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     val gridState = rememberLazyStaggeredGridState()
+
+    val isAtTop by remember {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex == 0
+        }
+    }
+
     val shouldLoadMore by remember(uiState.notes, uiState.hasMore, uiState.isLoading) {
         derivedStateOf {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -83,29 +99,75 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Surface(
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        shape = MaterialTheme.shapes.small,
+            Column {
+                TopAppBar(
+                    title = {
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            shape = MaterialTheme.shapes.small,
+                        ) {
+                            Text(
+                                text = "Synap",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    },
+                    actions = {
+                        AnimatedVisibility(
+                            visible = !isAtTop,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            IconButton(onClick = onOpenSearch) {
+                                Icon(Icons.Filled.Search, contentDescription = "搜索")
+                            }
+                        }
+
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Filled.Settings, contentDescription = "设置")
+                        }
+                    },
+                )
+
+                AnimatedVisibility(
+                    visible = isAtTop,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Text(
-                            text = "Synap",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.extraLarge)
+                                .clickable { onOpenSearch() },
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = MaterialTheme.shapes.extraLarge
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "搜索笔记、标签、片段...",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
                     }
-                },
-                actions = {
-                    // 点击搜索图标，直接触发回调跳转到独立搜索页
-                    IconButton(onClick = onOpenSearch) {
-                        Icon(Icons.Filled.Search, contentDescription = "搜索")
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "设置")
-                    }
-                },
-            )
+                }
+            }
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onComposeNote) {

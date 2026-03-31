@@ -1,10 +1,14 @@
 package com.fuwaki.synap.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState // --- 新增引入 ---
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,12 +18,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset // --- 新增引入 ---
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -44,6 +51,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,15 +62,23 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fuwaki.synap.ui.components.NoteCardItem
 import com.fuwaki.synap.ui.model.Note
 import com.fuwaki.synap.ui.viewmodel.HomeUiState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,6 +98,31 @@ fun HomeScreen(
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var currentFilter by rememberSaveable { mutableStateOf("全部") }
+
+    var deletedNoteToUndo by remember { mutableStateOf<Note?>(null) }
+    var undoProgress by remember { mutableFloatStateOf(1f) }
+    var timeLeftSeconds by remember { mutableIntStateOf(3) }
+
+    // --- 核心修改：计算 FAB 躲避弹窗的偏移量动画 ---
+    // 弹窗高度大约 60dp + 底部 32dp 的留白，因此向上偏移 96dp 刚好能留出空隙
+    val fabDodgeOffset by animateDpAsState(
+        targetValue = if (deletedNoteToUndo != null) (-96).dp else 0.dp,
+        label = "fab_dodge_animation"
+    )
+
+    LaunchedEffect(deletedNoteToUndo) {
+        if (deletedNoteToUndo != null) {
+            var timeLeft = 3000L
+            val interval = 16L
+            while (timeLeft > 0) {
+                delay(interval)
+                timeLeft -= interval
+                undoProgress = timeLeft.toFloat() / 3000f
+                timeLeftSeconds = kotlin.math.ceil(timeLeft / 1000f).toInt()
+            }
+            deletedNoteToUndo = null
+        }
+    }
 
     val isScrolledDown by remember {
         derivedStateOf {
@@ -200,10 +242,13 @@ fun HomeScreen(
         floatingActionButton = {
             Column(
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                // --- 核心修改：应用躲避偏移量动画，使整个按钮组丝滑上下移动 ---
+                modifier = Modifier.offset(y = fabDodgeOffset)
             ) {
+                // 回到顶部按钮：向下滚动时显示
                 AnimatedVisibility(
-                    visible = isScrolledDown,
+                    visible = isScrolledDown, // 移除了之前的 deletedNoteToUndo 判断
                     enter = fadeIn(),
                     exit = fadeOut()
                 ) {
@@ -220,86 +265,149 @@ fun HomeScreen(
                     )
                 }
 
+                // --- 核心修改：移除了“+”号按钮外部的 AnimatedVisibility，让它常驻并随容器偏移 ---
                 FloatingActionButton(onClick = onComposeNote) {
                     Icon(Icons.Filled.Add, contentDescription = "创建笔记")
                 }
             }
         },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            when {
-                uiState.isLoading && uiState.notes.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                when {
+                    uiState.isLoading && uiState.notes.isEmpty() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
                     }
-                }
 
-                uiState.errorMessage != null && uiState.notes.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    uiState.errorMessage != null && uiState.notes.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = uiState.errorMessage,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                TextButton(
+                                    onClick = onRefresh,
+                                    modifier = Modifier.padding(top = 12.dp),
+                                ) {
+                                    Text("重试")
+                                }
+                            }
+                        }
+                    }
+
+                    displayNotes.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Text(
-                                text = uiState.errorMessage,
-                                color = MaterialTheme.colorScheme.error,
+                                text = "这里空空如也",
                                 style = MaterialTheme.typography.bodyLarge,
                             )
-                            TextButton(
-                                onClick = onRefresh,
-                                modifier = Modifier.padding(top = 12.dp),
-                            ) {
-                                Text("重试")
+                        }
+                    }
+
+                    else -> {
+                        LazyVerticalStaggeredGrid(
+                            columns = StaggeredGridCells.Adaptive(minSize = 240.dp),
+                            state = gridState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                top = 16.dp,
+                                end = 16.dp,
+                                bottom = 96.dp
+                            ),
+                            verticalItemSpacing = 16.dp,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            itemsIndexed(displayNotes, key = { _, note -> "${note.id}_${note.isDeleted}" }) { index, note ->
+                                NoteCardItem(
+                                    note = note,
+                                    onClick = { onOpenNote(note.id) },
+                                    onToggleDeleted = {
+                                        onToggleDeleted(note)
+                                        if (!note.isDeleted) {
+                                            deletedNoteToUndo = note
+                                            undoProgress = 1f
+                                        }
+                                    },
+                                    onReply = { onReplyToNote(note.id, note.content) },
+                                    animationDelayMillis = (index.coerceAtMost(6)) * 45,
+                                )
                             }
                         }
                     }
                 }
+            }
 
-                displayNotes.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "这里空空如也",
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
-                }
-
-                else -> {
-                    LazyVerticalStaggeredGrid(
-                        columns = StaggeredGridCells.Adaptive(minSize = 240.dp),
-                        state = gridState,
-                        modifier = Modifier.fillMaxSize(),
-                        // --- 修改：增加 96.dp 底部留白，完全避开小白条和 FAB 的遮挡 ---
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            top = 16.dp,
-                            end = 16.dp,
-                            bottom = 96.dp
-                        ),
-                        verticalItemSpacing = 16.dp,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        itemsIndexed(displayNotes, key = { _, note -> "${note.id}_${note.isDeleted}" }) { index, note ->
-                            NoteCardItem(
-                                note = note,
-                                onClick = { onOpenNote(note.id) },
-                                onToggleDeleted = { onToggleDeleted(note) },
-                                onReply = { onReplyToNote(note.id, note.content) },
-                                animationDelayMillis = (index.coerceAtMost(6)) * 45,
+            AnimatedVisibility(
+                visible = deletedNoteToUndo != null,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
+                    .fillMaxWidth()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shadowElevation = 6.dp
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("已删除笔记", style = MaterialTheme.typography.bodyMedium)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "${timeLeftSeconds}s",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = "撤销删除",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        deletedNoteToUndo?.let { note -> onToggleDeleted(note) }
+                                        deletedNoteToUndo = null
+                                    }
+                                    .padding(8.dp)
                             )
                         }
+
+                        WavyProgressIndicator(
+                            progress = undoProgress,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(12.dp)
+                                .padding(bottom = 4.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
@@ -351,6 +459,45 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun WavyProgressIndicator(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+) {
+    Canvas(modifier = modifier) {
+        val path = Path()
+        val width = size.width
+        val height = size.height
+        val midY = height / 2f
+
+        val strokeWidthPx = 4.dp.toPx()
+        val amplitude = (height - strokeWidthPx) / 2f
+        val waveLength = 20.dp.toPx()
+
+        val endX = width * progress
+
+        if (endX > 0) {
+            path.moveTo(0f, midY)
+            var x = 0f
+            while (x <= endX) {
+                val y = midY + sin(x * (2 * PI / waveLength)).toFloat() * amplitude
+                path.lineTo(x, y)
+                x += 2f
+            }
+            drawPath(
+                path = path,
+                color = color,
+                style = Stroke(
+                    width = strokeWidthPx,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round
+                )
+            )
         }
     }
 }

@@ -164,7 +164,7 @@ fun NoteCardItem(
                     scaleX = cardScale
                     scaleY = cardScale
                 }
-                // --- 核心修复：禁用已删除笔记的点击事件，被删除的笔记将不再有涟漪动画和点击反应 ---
+
                 .clickable(
                     enabled = !note.isDeleted,
                     onClick = onClick

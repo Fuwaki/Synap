@@ -1,36 +1,25 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-# Keep native library methods
--keep class com.fuwaki.synap.SynapLib { *; }
--keep class com.fuwaki.synap.SynapCore { *; }
-
-# Keep JNI native methods
+# Keep JNI method names for any classes that still expose native methods.
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 
-# Keep JNI related classes
--keep class com.fuwaki.synap.** { *; }
--keep class uniffi.synap_coreffi.** { *; }
+# Uncomment this to preserve the line number information for
+# debugging stack traces.
+-keepattributes SourceFile,LineNumberTable
+
+# JNA's native bridge (`libjnidispatch.so`) looks up many JNA classes, fields,
+# and methods by their original names. The stable practice is to keep the JNA
+# namespace intact rather than chasing individual members across versions.
+-keep class com.sun.jna.** { *; }
+-keep interface com.sun.jna.** { *; }
+
+# JNA contains desktop-only AWT helpers which are never used on Android.
+# Suppress warnings for those optional references when the package is kept.
+-dontwarn java.awt.**
+
+# Keep the generated UniFFI bindings package intact as the JNA-facing ABI layer.
+-keep class com.fuwaki.synap.bindings.uniffi.synap_coreffi.** { *; }
+-keep interface com.fuwaki.synap.bindings.uniffi.synap_coreffi.** { *; }
 
 # Keep Kotlin coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}

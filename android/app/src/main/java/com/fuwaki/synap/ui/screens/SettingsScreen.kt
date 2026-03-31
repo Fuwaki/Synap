@@ -33,10 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,12 +51,13 @@ fun SettingsScreen(
     onUseMonetChange: (Boolean) -> Unit,
     isSystemLanguage: Boolean,
     onSystemLanguageToggle: (Boolean) -> Unit,
+    noteTextSize: Float,
+    onNoteTextSizeChange: (Float) -> Unit,
     onExportNotes: () -> Unit,
     onNavigateToLanguageSelection: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    var textSizeOption by remember { mutableFloatStateOf(16f) }
 
     Scaffold(
         topBar = {
@@ -183,20 +180,20 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "笔记正文文字大小 (${textSizeOption.toInt()}sp)",
+                            text = "笔记正文文字大小 (${noteTextSize.toInt()}sp)",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        if (textSizeOption != 16f) {
-                            TextButton(onClick = { textSizeOption = 16f }) {
+                        if (noteTextSize != 16f) {
+                            TextButton(onClick = { onNoteTextSizeChange(16f) }) {
                                 Text("恢复默认大小")
                             }
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Slider(
-                        value = textSizeOption,
-                        onValueChange = { textSizeOption = it },
+                        value = noteTextSize,
+                        onValueChange = onNoteTextSizeChange,
                         valueRange = 10f..30f,
                         steps = 9
                     )

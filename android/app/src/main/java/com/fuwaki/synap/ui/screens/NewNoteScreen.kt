@@ -1,22 +1,22 @@
 package com.fuwaki.synap.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll // --- 新增：横向滚动 ---
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets // --- 新增：窗口插入（用于检测键盘） ---
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible // --- 新增：检测键盘是否可见 ---
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState // --- 新增：滚动状态 ---
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.fuwaki.synap.LocalNoteTextSize
 import com.fuwaki.synap.ui.viewmodel.EditorMode
 import com.fuwaki.synap.ui.viewmodel.EditorUiState
 import kotlinx.coroutines.delay
@@ -177,6 +178,11 @@ fun NewNoteScreen(
                         .weight(1f)
                         .fillMaxWidth()
                         .focusRequester(bodyFocusRequester),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = LocalNoteTextSize.current,
+                        lineHeight = LocalNoteTextSize.current * 1.5f,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
                     placeholder = { Text("开始输入正文...") },
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,

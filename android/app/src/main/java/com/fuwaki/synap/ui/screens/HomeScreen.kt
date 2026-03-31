@@ -205,7 +205,6 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // --- 修改：同步使用带有“回到顶部”文字的 Extended FAB ---
                 AnimatedVisibility(
                     visible = isScrolledDown,
                     enter = fadeIn(),

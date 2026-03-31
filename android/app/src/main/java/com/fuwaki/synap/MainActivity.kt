@@ -22,7 +22,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,7 +60,9 @@ import com.fuwaki.synap.ui.viewmodel.HomeViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,6 +70,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+
+val LocalNoteTextSize = compositionLocalOf { 16.sp }
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -84,6 +90,8 @@ private fun SynapApp() {
     var useMonet by rememberSaveable { mutableStateOf(supportsMonet) }
     var isSystemLanguage by rememberSaveable { mutableStateOf(true) }
     var selectedLanguageIndex by rememberSaveable { mutableIntStateOf(0) }
+    var noteTextSize by rememberSaveable { mutableFloatStateOf(16f) }
+
     val sessionViewModel: AppSessionViewModel = hiltViewModel()
     val sessionState by sessionViewModel.uiState.collectAsState()
     val isDarkTheme = when (themeMode) {
@@ -94,32 +102,36 @@ private fun SynapApp() {
 
     val languages = remember { sampleLanguages() }
 
-    MyApplicationTheme(
-        darkTheme = isDarkTheme,
-        dynamicColor = supportsMonet && useMonet,
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
+    CompositionLocalProvider(LocalNoteTextSize provides noteTextSize.sp) {
+        MyApplicationTheme(
+            darkTheme = isDarkTheme,
+            dynamicColor = supportsMonet && useMonet,
         ) {
-            when (val state = sessionState) {
-                AppSessionUiState.Initializing -> SessionLoadingScreen()
-                is AppSessionUiState.Error -> SessionErrorScreen(
-                    message = state.message,
-                    onRetry = sessionViewModel::initialize,
-                )
-                AppSessionUiState.Ready -> SynapNavGraph(
-                    themeMode = themeMode,
-                    onThemeModeChange = { themeMode = it },
-                    useMonet = useMonet,
-                    supportsMonet = supportsMonet,
-                    onUseMonetChange = { useMonet = it },
-                    isSystemLanguage = isSystemLanguage,
-                    onSystemLanguageToggle = { isSystemLanguage = it },
-                    languages = languages,
-                    selectedLanguageIndex = selectedLanguageIndex,
-                    onLanguageSelect = { selectedLanguageIndex = it },
-                )
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                when (val state = sessionState) {
+                    AppSessionUiState.Initializing -> SessionLoadingScreen()
+                    is AppSessionUiState.Error -> SessionErrorScreen(
+                        message = state.message,
+                        onRetry = sessionViewModel::initialize,
+                    )
+                    AppSessionUiState.Ready -> SynapNavGraph(
+                        themeMode = themeMode,
+                        onThemeModeChange = { themeMode = it },
+                        useMonet = useMonet,
+                        supportsMonet = supportsMonet,
+                        onUseMonetChange = { useMonet = it },
+                        isSystemLanguage = isSystemLanguage,
+                        onSystemLanguageToggle = { isSystemLanguage = it },
+                        languages = languages,
+                        selectedLanguageIndex = selectedLanguageIndex,
+                        onLanguageSelect = { selectedLanguageIndex = it },
+                        noteTextSize = noteTextSize,
+                        onNoteTextSizeChange = { noteTextSize = it }
+                    )
+                }
             }
         }
     }
@@ -137,6 +149,8 @@ private fun SynapNavGraph(
     languages: List<String>,
     selectedLanguageIndex: Int,
     onLanguageSelect: (Int) -> Unit,
+    noteTextSize: Float,
+    onNoteTextSizeChange: (Float) -> Unit,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -272,16 +286,11 @@ private fun SynapNavGraph(
                 onUseMonetChange = onUseMonetChange,
                 isSystemLanguage = isSystemLanguage,
                 onSystemLanguageToggle = onSystemLanguageToggle,
+                noteTextSize = noteTextSize,
+                onNoteTextSizeChange = onNoteTextSizeChange,
                 onExportNotes = {
-                    // 启动一个协程，在后台线程处理文件打包，防止卡顿主界面
                     scope.launch(Dispatchers.IO) {
-                        // TODO: 1. 从数据库获取所有笔记（比如 val allNotes = repository.getAllNotes()）
-                        // TODO: 2. 将笔记列表转换为 JSON 字符串（比如使用 Gson().toJson(allNotes) 或 Kotlinx Serialization）
-
-                        // 临时的测试JSON字符串
                         val testJsonData = "[\n  {\n    \"id\": \"1\",\n    \"content\": \"这是一条导出测试笔记。\"\n  }\n]"
-
-                        // 切换回主线程启动系统分享面板
                         withContext(Dispatchers.Main) {
                             exportDataToZipAndShare(context, testJsonData)
                         }
@@ -415,7 +424,6 @@ private fun SessionErrorScreen(message: String, onRetry: () -> Unit) {
     }
 }
 
-// 打包与分享逻辑
 fun exportDataToZipAndShare(context: Context, jsonData: String) {
     try {
         val cachePath = File(context.cacheDir, "exports")

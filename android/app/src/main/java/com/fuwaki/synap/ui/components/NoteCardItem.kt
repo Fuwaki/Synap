@@ -165,7 +165,6 @@ fun NoteCardItem(
                     scaleX = cardScale
                     scaleY = cardScale
                 }
-
                 .clickable(
                     enabled = !note.isDeleted,
                     onClick = onClick

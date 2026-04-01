@@ -1,5 +1,12 @@
 package com.fuwaki.synap.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -9,10 +16,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets // --- 新增引入 ---
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding // --- 恢复引入 ---
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,6 +51,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,9 +62,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.fuwaki.synap.LocalNoteTextSize
 import com.fuwaki.synap.ui.viewmodel.EditorMode
 import com.fuwaki.synap.ui.viewmodel.EditorUiState
@@ -73,16 +83,25 @@ fun NewNoteScreen(
     onRemoveTag: (Int) -> Unit,
     onSave: () -> Unit,
 ) {
+    val context = LocalContext.current
+
     var tagInputText by remember { mutableStateOf("") }
     var isTagInputVisible by remember { mutableStateOf(false) }
-
-    // --- 新增：记录输入框是否真正获取过焦点 ---
     var tagInputHasFocus by remember { mutableStateOf(false) }
 
     val bodyFocusRequester = remember { FocusRequester() }
     val tagFocusRequester = remember { FocusRequester() }
     val tagScrollState = rememberScrollState()
     val isImeVisible = WindowInsets.isImeVisible
+
+    val hasEasterEgg by remember(uiState.content) {
+        derivedStateOf {
+            uiState.content.contains("愚人节", ignoreCase = true) ||
+            uiState.content.contains("Fools' Day", ignoreCase = true) ||
+            uiState.content.contains("Fool Day", ignoreCase = true) ||
+            uiState.content.contains("Fools Day", ignoreCase = true)
+        }
+    }
 
     LaunchedEffect(Unit) {
         delay(300)
@@ -100,13 +119,38 @@ fun NewNoteScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        when (uiState.mode) {
-                            EditorMode.Create -> "新建笔记"
-                            is EditorMode.Reply -> "回复笔记"
-                            is EditorMode.Edit -> "编辑笔记"
-                        },
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when (uiState.mode) {
+                                EditorMode.Create -> "新建笔记"
+                                is EditorMode.Reply -> "回复笔记"
+                                is EditorMode.Edit -> "编辑笔记"
+                            },
+                        )
+                        AnimatedVisibility(
+                            visible = hasEasterEgg,
+                            enter = fadeIn() + scaleIn(),
+                            exit = fadeOut() + scaleOut()
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://b23.tv/5yYgkQf"))
+                                    intent.setPackage("tv.danmaku.bili")
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        intent.setPackage(null)
+                                        context.startActivity(intent)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .padding(start = 4.dp)
+                                    .size(36.dp)
+                            ) {
+                                Text("🤡", fontSize = 22.sp) // 你也可以换成 🎉 或者 🎁
+                            }
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -132,7 +176,6 @@ fun NewNoteScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                // --- 核心修复：消耗掉 Scaffold 已经算过的 Insets，防止跟 imePadding 重复计算高度 ---
                 .consumeWindowInsets(innerPadding)
                 .padding(horizontal = 16.dp),
         ) {
@@ -206,7 +249,6 @@ fun NewNoteScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // --- 核心修复：重新加回 imePadding() 让它在键盘上方浮起 ---
                     .imePadding()
                     .padding(bottom = if (isImeVisible) 0.dp else 16.dp)
             ) {
@@ -258,12 +300,10 @@ fun NewNoteScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(tagFocusRequester)
-                            // --- 核心修复：确保真的获取焦点后，再处理失去焦点的逻辑 ---
                             .onFocusChanged { focusState ->
                                 if (focusState.isFocused) {
                                     tagInputHasFocus = true
                                 } else {
-                                    // 仅当曾经获取过焦点，现在失去了，且内容为空时，才收起
                                     if (tagInputHasFocus && tagInputText.isBlank()) {
                                         isTagInputVisible = false
                                     }

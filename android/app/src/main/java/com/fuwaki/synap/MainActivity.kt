@@ -11,14 +11,25 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
@@ -33,9 +44,12 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -283,297 +297,405 @@ private fun SynapNavGraph(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
 
-    NavHost(
-        navController = navController,
-        startDestination = "home",
-        enterTransition = {
-            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(400))
-        },
-        exitTransition = {
-            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(400))
-        },
-        popEnterTransition = {
-            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(400))
-        },
-        popExitTransition = {
-            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(400))
-        },
-    ) {
-        composable(
-            route = "home",
-            enterTransition = { fadeIn() },
-            exitTransition = { fadeOut() },
-            popEnterTransition = { fadeIn() },
-            popExitTransition = { fadeOut() },
+    val configuration = LocalConfiguration.current
+    val isLargeScreen = configuration.screenWidthDp >= 600
+    var showSettingsSidebar by rememberSaveable { mutableStateOf(false) }
+
+    // --- 核心修改：使用 Box 叠加层来实现真正的 Modal Side Sheet ---
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        // 底层：主导航内容区
+        NavHost(
+            navController = navController,
+            startDestination = "home",
+            enterTransition = {
+                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(400))
+            },
+            exitTransition = {
+                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(400))
+            },
+            popEnterTransition = {
+                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(400))
+            },
+            popExitTransition = {
+                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(400))
+            },
+            modifier = Modifier.fillMaxSize()
         ) {
-            val viewModel: HomeViewModel = hiltViewModel()
-            val uiState by viewModel.uiState.collectAsState()
+            composable(
+                route = "home",
+                enterTransition = { fadeIn() },
+                exitTransition = { fadeOut() },
+                popEnterTransition = { fadeIn() },
+                popExitTransition = { fadeOut() },
+            ) {
+                val viewModel: HomeViewModel = hiltViewModel()
+                val uiState by viewModel.uiState.collectAsState()
 
-            HomeScreen(
-                uiState = uiState,
-                onOpenSettings = { navController.navigate("settings") },
-                onComposeNote = { navController.navigate(editorRoute()) },
-                onOpenNote = { noteId -> navController.navigate(detailRoute(noteId)) },
-                onReplyToNote = { noteId, summary ->
-                    navController.navigate(editorRoute(parentId = noteId, parentSummary = summary))
-                },
-                onToggleDeleted = viewModel::toggleDeleted,
-                onOpenSearch = { navController.navigate("search") },
-                onLoadMore = viewModel::loadMore,
-                onRefresh = viewModel::refresh,
-            )
-        }
-
-        composable(
-            route = "search",
-            enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Up, animationSpec = tween(300)) + fadeIn() },
-            exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Down, animationSpec = tween(300)) + fadeOut() }
-        ) {
-            val viewModel: HomeViewModel = hiltViewModel()
-            val uiState by viewModel.uiState.collectAsState()
-
-            SearchScreen(
-                uiState = uiState,
-                onSearchQueryChange = viewModel::updateQuery,
-                onSubmitSearch = viewModel::submitSearch,
-                onClearSearch = viewModel::clearSearch,
-                onNavigateBack = { navController.popBackStack() },
-                onOpenNote = { noteId -> navController.navigate(detailRoute(noteId)) },
-                onToggleDeleted = viewModel::toggleDeleted
-            )
-        }
-
-        composable(
-            route = "detail/{noteId}",
-            arguments = listOf(navArgument("noteId") { type = NavType.StringType }),
-        ) {
-            val viewModel: DetailViewModel = hiltViewModel()
-            val uiState by viewModel.uiState.collectAsState()
-
-            LaunchedEffect(viewModel) {
-                viewModel.events.collect { event ->
-                    if (event is DetailEvent.NavigateBackAfterDelete) {
-                        navController.popBackStack()
-                    }
-                }
-            }
-
-            NoteDetailScreen(
-                uiState = uiState,
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateHome = { navController.popBackStack("home", inclusive = false) }, // --- 传入返回首页回调 ---
-                onDelete = viewModel::deleteCurrentNote,
-                onReply = {
-                    uiState.note?.let { note ->
-                        navController.navigate(editorRoute(parentId = note.id, parentSummary = note.content))
-                    }
-                },
-                onEdit = {
-                    uiState.note?.let { note ->
-                        navController.navigate(editorRoute(editNoteId = note.id))
-                    }
-                },
-                onOpenRelatedNote = { noteId -> navController.navigate(detailRoute(noteId)) },
-                onLoadMoreReplies = viewModel::loadMoreReplies,
-                onRefresh = viewModel::refreshAll,
-            )
-        }
-
-        composable("settings") {
-            val context = LocalContext.current
-            val scope = rememberCoroutineScope()
-            val settingsViewModel: SettingsViewModel = hiltViewModel()
-            val settingsUiState by settingsViewModel.uiState.collectAsState()
-            var showImportWarning by remember { mutableStateOf(false) }
-            var showRestartRequired by remember { mutableStateOf(false) }
-
-            val exportDatabaseLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
-            ) { uri ->
-                if (uri == null || databaseActivity == null) {
-                    return@rememberLauncherForActivityResult
-                }
-
-                scope.launch {
-                    databaseActivity.exportDatabaseToUri(uri)
-                        .onSuccess {
-                            Toast.makeText(context, "数据库已导出", Toast.LENGTH_SHORT).show()
-                        }
-                        .onFailure { throwable ->
-                            Toast.makeText(
-                                context,
-                                throwable.message ?: "导出数据库失败",
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                }
-            }
-
-            val importDatabaseLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.OpenDocument(),
-            ) { uri ->
-                if (uri == null || databaseActivity == null) {
-                    return@rememberLauncherForActivityResult
-                }
-
-                scope.launch {
-                    databaseActivity.importDatabaseFromUri(uri)
-                        .onSuccess {
-                            showRestartRequired = true
-                        }
-                        .onFailure { throwable ->
-                            Toast.makeText(
-                                context,
-                                throwable.message ?: "导入数据库失败",
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                }
-            }
-
-            if (showImportWarning) {
-                AlertDialog(
-                    onDismissRequest = { showImportWarning = false },
-                    title = { Text("导入并替换数据库") },
-                    text = {
-                        Text("当前本地数据库会被新文件替换，并且导入完成后必须重新启动 App 才会生效。")
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showImportWarning = false
-                                importDatabaseLauncher.launch(arrayOf("*/*"))
-                            },
-                        ) {
-                            Text("选择数据库")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showImportWarning = false }) {
-                            Text("取消")
-                        }
-                    },
-                )
-            }
-
-            if (showRestartRequired) {
-                AlertDialog(
-                    onDismissRequest = {},
-                    title = { Text("需要重启 App") },
-                    text = {
-                        Text("数据库已经替换完成。当前本地数据库会话已失效，请关闭并重新启动 App。")
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showRestartRequired = false
-                                databaseActivity?.closeForDatabaseRestart()
-                            },
-                        ) {
-                            Text("关闭 App")
-                        }
-                    },
-                )
-            }
-
-            SettingsScreen(
-                currentThemeMode = themeMode,
-                onThemeModeChange = onThemeModeChange,
-                useMonet = useMonet,
-                supportsMonet = supportsMonet,
-                onUseMonetChange = onUseMonetChange,
-                customThemeHue = customThemeHue,
-                onCustomThemeHueChange = onCustomThemeHueChange,
-                isSystemLanguage = isSystemLanguage,
-                onSystemLanguageToggle = onSystemLanguageToggle,
-                noteTextSize = noteTextSize,
-                onNoteTextSizeChange = onNoteTextSizeChange,
-                buildVersion = settingsUiState.buildVersion,
-                buildVersionDetails = settingsUiState.buildVersionDetails,
-                onExportNotes = {
-                    scope.launch(Dispatchers.IO) {
-                        val testJsonData = "[\n  {\n    \"id\": \"1\",\n    \"content\": \"这是一条导出测试笔记。\"\n  }\n]"
-                        withContext(Dispatchers.Main) {
-                            exportDataToZipAndShare(context, testJsonData)
-                        }
-                    }
-                },
-                onExportDatabase = {
-                    exportDatabaseLauncher.launch("synap_database.redb")
-                },
-                onShareDatabase = {
-                    if (databaseActivity == null) {
-                        Toast.makeText(context, "当前无法分享数据库", Toast.LENGTH_SHORT).show()
-                    } else {
-                        scope.launch {
-                            databaseActivity.shareDatabase()
-                                .onFailure { throwable ->
-                                    Toast.makeText(
-                                        context,
-                                        throwable.message ?: "分享数据库失败",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
-                                }
-                        }
-                    }
-                },
-                onImportDatabase = {
-                    if (databaseActivity == null) {
-                        Toast.makeText(context, "当前无法导入数据库", Toast.LENGTH_SHORT).show()
-                    } else {
-                        showImportWarning = true
-                    }
-                },
-                onNavigateToLanguageSelection = { navController.navigate("language_selection") },
-                onNavigateBack = { navController.popBackStack() },
-            )
-        }
-
-        composable("language_selection") {
-            LanguageSelectionScreen(
-                languages = languages,
-                selectedIndex = selectedLanguageIndex,
-                onLanguageSelect = onLanguageSelect,
-                onNavigateBack = { navController.popBackStack() },
-            )
-        }
-
-        composable(
-            route = "editor?parentId={parentId}&parentSummary={parentSummary}&editNoteId={editNoteId}",
-            arguments = listOf(
-                navArgument("parentId") { nullable = true; defaultValue = null; type = NavType.StringType },
-                navArgument("parentSummary") { nullable = true; defaultValue = null; type = NavType.StringType },
-                navArgument("editNoteId") { nullable = true; defaultValue = null; type = NavType.StringType },
-            ),
-        ) {
-            val viewModel: EditorViewModel = hiltViewModel()
-            val uiState by viewModel.uiState.collectAsState()
-
-            LaunchedEffect(viewModel, backStackEntry?.destination?.route) {
-                viewModel.events.collect { event ->
-                    if (event is EditorEvent.Saved) {
-                        if (event.mode is EditorMode.Edit) {
-                            navController.popBackStack()
-                            navController.popBackStack()
+                HomeScreen(
+                    uiState = uiState,
+                    onOpenSettings = {
+                        if (isLargeScreen) {
+                            showSettingsSidebar = true
                         } else {
-                            navController.popBackStack()
+                            navController.navigate("settings")
                         }
-                        navController.navigate(detailRoute(event.noteId))
-                    }
-                }
+                    },
+                    onComposeNote = { navController.navigate(editorRoute()) },
+                    onOpenNote = { noteId -> navController.navigate(detailRoute(noteId)) },
+                    onReplyToNote = { noteId, summary ->
+                        navController.navigate(editorRoute(parentId = noteId, parentSummary = summary))
+                    },
+                    onToggleDeleted = viewModel::toggleDeleted,
+                    onOpenSearch = { navController.navigate("search") },
+                    onLoadMore = viewModel::loadMore,
+                    onRefresh = viewModel::refresh,
+                )
             }
 
-            NewNoteScreen(
-                uiState = uiState,
-                onNavigateBack = { navController.popBackStack() },
-                onContentChange = viewModel::updateContent,
-                onAddTag = viewModel::addTag,
-                onUpdateTag = viewModel::updateTag,
-                onRemoveTag = viewModel::removeTag,
-                onSave = viewModel::save,
+            composable(
+                route = "search",
+                enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Up, animationSpec = tween(300)) + fadeIn() },
+                exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Down, animationSpec = tween(300)) + fadeOut() }
+            ) {
+                val viewModel: HomeViewModel = hiltViewModel()
+                val uiState by viewModel.uiState.collectAsState()
+
+                SearchScreen(
+                    uiState = uiState,
+                    onSearchQueryChange = viewModel::updateQuery,
+                    onSubmitSearch = viewModel::submitSearch,
+                    onClearSearch = viewModel::clearSearch,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenNote = { noteId -> navController.navigate(detailRoute(noteId)) },
+                    onToggleDeleted = viewModel::toggleDeleted
+                )
+            }
+
+            composable(
+                route = "detail/{noteId}",
+                arguments = listOf(navArgument("noteId") { type = NavType.StringType }),
+            ) {
+                val viewModel: DetailViewModel = hiltViewModel()
+                val uiState by viewModel.uiState.collectAsState()
+
+                LaunchedEffect(viewModel) {
+                    viewModel.events.collect { event ->
+                        if (event is DetailEvent.NavigateBackAfterDelete) {
+                            navController.popBackStack()
+                        }
+                    }
+                }
+
+                NoteDetailScreen(
+                    uiState = uiState,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateHome = { navController.popBackStack("home", inclusive = false) },
+                    onDelete = viewModel::deleteCurrentNote,
+                    onReply = {
+                        uiState.note?.let { note ->
+                            navController.navigate(editorRoute(parentId = note.id, parentSummary = note.content))
+                        }
+                    },
+                    onEdit = {
+                        uiState.note?.let { note ->
+                            navController.navigate(editorRoute(editNoteId = note.id))
+                        }
+                    },
+                    onOpenRelatedNote = { noteId -> navController.navigate(detailRoute(noteId)) },
+                    onLoadMoreReplies = viewModel::loadMoreReplies,
+                    onRefresh = viewModel::refreshAll,
+                )
+            }
+
+            composable("settings") {
+                SettingsContainer(
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
+                    useMonet = useMonet,
+                    supportsMonet = supportsMonet,
+                    onUseMonetChange = onUseMonetChange,
+                    customThemeHue = customThemeHue,
+                    onCustomThemeHueChange = onCustomThemeHueChange,
+                    isSystemLanguage = isSystemLanguage,
+                    onSystemLanguageToggle = onSystemLanguageToggle,
+                    noteTextSize = noteTextSize,
+                    onNoteTextSizeChange = onNoteTextSizeChange,
+                    databaseActivity = databaseActivity,
+                    onNavigateToLanguageSelection = { navController.navigate("language_selection") },
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("language_selection") {
+                LanguageSelectionScreen(
+                    languages = languages,
+                    selectedIndex = selectedLanguageIndex,
+                    onLanguageSelect = onLanguageSelect,
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = "editor?parentId={parentId}&parentSummary={parentSummary}&editNoteId={editNoteId}",
+                arguments = listOf(
+                    navArgument("parentId") { nullable = true; defaultValue = null; type = NavType.StringType },
+                    navArgument("parentSummary") { nullable = true; defaultValue = null; type = NavType.StringType },
+                    navArgument("editNoteId") { nullable = true; defaultValue = null; type = NavType.StringType },
+                ),
+            ) {
+                val viewModel: EditorViewModel = hiltViewModel()
+                val uiState by viewModel.uiState.collectAsState()
+
+                LaunchedEffect(viewModel, backStackEntry?.destination?.route) {
+                    viewModel.events.collect { event ->
+                        if (event is EditorEvent.Saved) {
+                            if (event.mode is EditorMode.Edit) {
+                                navController.popBackStack()
+                                navController.popBackStack()
+                            } else {
+                                navController.popBackStack()
+                            }
+                            navController.navigate(detailRoute(event.noteId))
+                        }
+                    }
+                }
+
+                NewNoteScreen(
+                    uiState = uiState,
+                    onNavigateBack = { navController.popBackStack() },
+                    onContentChange = viewModel::updateContent,
+                    onAddTag = viewModel::addTag,
+                    onUpdateTag = viewModel::updateTag,
+                    onRemoveTag = viewModel::removeTag,
+                    onSave = viewModel::save,
+                )
+            }
+        }
+
+        // --- 中层：半透明遮罩 (Scrim) ---
+        AnimatedVisibility(
+            visible = isLargeScreen && showSettingsSidebar,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f)) // 背景变暗
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null, // 点击时不要水波纹
+                        onClick = { showSettingsSidebar = false } // 点击外侧空白处收起
+                    )
             )
+        }
+
+        // --- 顶层：悬浮的 Modal Side Sheet 本体 ---
+        AnimatedVisibility(
+            visible = isLargeScreen && showSettingsSidebar,
+            enter = slideInHorizontally(initialOffsetX = { it }),
+            exit = slideOutHorizontally(targetOffsetX = { it }),
+            modifier = Modifier.align(Alignment.CenterEnd) // 紧贴右侧
+        ) {
+            Surface(
+                modifier = Modifier
+                    .width(320.dp) // 固定 320px
+                    .fillMaxHeight(),
+                // M3 侧边栏规范：左侧有圆角，右侧直角贴边
+                shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
+                shadowElevation = 8.dp, // 加上模态阴影
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                SettingsContainer(
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
+                    useMonet = useMonet,
+                    supportsMonet = supportsMonet,
+                    onUseMonetChange = onUseMonetChange,
+                    customThemeHue = customThemeHue,
+                    onCustomThemeHueChange = onCustomThemeHueChange,
+                    isSystemLanguage = isSystemLanguage,
+                    onSystemLanguageToggle = onSystemLanguageToggle,
+                    noteTextSize = noteTextSize,
+                    onNoteTextSizeChange = onNoteTextSizeChange,
+                    databaseActivity = databaseActivity,
+                    onNavigateToLanguageSelection = {
+                        showSettingsSidebar = false
+                        navController.navigate("language_selection")
+                    },
+                    onNavigateBack = { showSettingsSidebar = false }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun SettingsContainer(
+    themeMode: Int,
+    onThemeModeChange: (Int) -> Unit,
+    useMonet: Boolean,
+    supportsMonet: Boolean,
+    onUseMonetChange: (Boolean) -> Unit,
+    customThemeHue: Float,
+    onCustomThemeHueChange: (Float) -> Unit,
+    isSystemLanguage: Boolean,
+    onSystemLanguageToggle: (Boolean) -> Unit,
+    noteTextSize: Float,
+    onNoteTextSizeChange: (Float) -> Unit,
+    databaseActivity: MainActivity?,
+    onNavigateToLanguageSelection: () -> Unit,
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
+    val settingsUiState by settingsViewModel.uiState.collectAsState()
+    var showImportWarning by remember { mutableStateOf(false) }
+    var showRestartRequired by remember { mutableStateOf(false) }
+
+    val exportDatabaseLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        if (uri == null || databaseActivity == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            databaseActivity.exportDatabaseToUri(uri)
+                .onSuccess {
+                    Toast.makeText(context, "数据库已导出", Toast.LENGTH_SHORT).show()
+                }
+                .onFailure { throwable ->
+                    Toast.makeText(
+                        context,
+                        throwable.message ?: "导出数据库失败",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+        }
+    }
+
+    val importDatabaseLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null || databaseActivity == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            databaseActivity.importDatabaseFromUri(uri)
+                .onSuccess {
+                    showRestartRequired = true
+                }
+                .onFailure { throwable ->
+                    Toast.makeText(
+                        context,
+                        throwable.message ?: "导入数据库失败",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+        }
+    }
+
+    if (showImportWarning) {
+        AlertDialog(
+            onDismissRequest = { showImportWarning = false },
+            title = { Text("导入并替换数据库") },
+            text = {
+                Text("当前本地数据库会被新文件替换，并且导入完成后必须重新启动 App 才会生效。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportWarning = false
+                        importDatabaseLauncher.launch(arrayOf("*/*"))
+                    },
+                ) {
+                    Text("选择数据库")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportWarning = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showRestartRequired) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("需要重启 App") },
+            text = {
+                Text("数据库已经替换完成。当前本地数据库会话已失效，请关闭并重新启动 App。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestartRequired = false
+                        databaseActivity?.closeForDatabaseRestart()
+                    },
+                ) {
+                    Text("关闭 App")
+                }
+            },
+        )
+    }
+
+    SettingsScreen(
+        currentThemeMode = themeMode,
+        onThemeModeChange = onThemeModeChange,
+        useMonet = useMonet,
+        supportsMonet = supportsMonet,
+        onUseMonetChange = onUseMonetChange,
+        customThemeHue = customThemeHue,
+        onCustomThemeHueChange = onCustomThemeHueChange,
+        isSystemLanguage = isSystemLanguage,
+        onSystemLanguageToggle = onSystemLanguageToggle,
+        noteTextSize = noteTextSize,
+        onNoteTextSizeChange = onNoteTextSizeChange,
+        buildVersion = settingsUiState.buildVersion,
+        buildVersionDetails = settingsUiState.buildVersionDetails,
+        onExportNotes = {
+            scope.launch(Dispatchers.IO) {
+                val testJsonData = "[\n  {\n    \"id\": \"1\",\n    \"content\": \"这是一条导出测试笔记。\"\n  }\n]"
+                withContext(Dispatchers.Main) {
+                    exportDataToZipAndShare(context, testJsonData)
+                }
+            }
+        },
+        onExportDatabase = {
+            exportDatabaseLauncher.launch("synap_database.redb")
+        },
+        onShareDatabase = {
+            if (databaseActivity == null) {
+                Toast.makeText(context, "当前无法分享数据库", Toast.LENGTH_SHORT).show()
+            } else {
+                scope.launch {
+                    databaseActivity.shareDatabase()
+                        .onFailure { throwable ->
+                            Toast.makeText(
+                                context,
+                                throwable.message ?: "分享数据库失败",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                }
+            }
+        },
+        onImportDatabase = {
+            if (databaseActivity == null) {
+                Toast.makeText(context, "当前无法导入数据库", Toast.LENGTH_SHORT).show()
+            } else {
+                showImportWarning = true
+            }
+        },
+        onNavigateToLanguageSelection = onNavigateToLanguageSelection,
+        onNavigateBack = onNavigateBack,
+    )
 }
 
 private fun detailRoute(noteId: String): String = "detail/${Uri.encode(noteId)}"

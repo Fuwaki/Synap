@@ -84,8 +84,6 @@ fun NoteCardItem(
     )
 
     val dismissState = rememberSwipeToDismissBoxState(
-        // --- 核心修复 1：将滑动判定阈值调大到宽度的 50%，防止误触 ---
-        positionalThreshold = { totalDistance -> totalDistance * 0.5f },
         confirmValueChange = { dismissValue ->
             when (dismissValue) {
                 SwipeToDismissBoxValue.StartToEnd -> {
@@ -165,7 +163,6 @@ fun NoteCardItem(
                     scaleX = cardScale
                     scaleY = cardScale
                 }
-
                 .clickable(
                     enabled = !note.isDeleted,
                     onClick = onClick

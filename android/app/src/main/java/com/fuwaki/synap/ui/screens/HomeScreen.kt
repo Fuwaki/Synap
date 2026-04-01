@@ -3,6 +3,7 @@ package com.fuwaki.synap.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize // --- 新增引入 ---
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -14,9 +15,12 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi // --- 新增引入 ---
+import androidx.compose.foundation.layout.FlowRow // --- 新增引入 ---
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,10 +35,13 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ExpandLess // --- 新增引入 ---
+import androidx.compose.material.icons.filled.ExpandMore // --- 新增引入 ---
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -52,6 +59,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -90,7 +98,7 @@ import java.util.Calendar
 import kotlin.math.PI
 import kotlin.math.sin
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) // --- 增加 ExperimentalLayoutApi ---
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
@@ -114,7 +122,6 @@ fun HomeScreen(
     var undoProgress by remember { mutableFloatStateOf(1f) }
     var timeLeftSeconds by remember { mutableIntStateOf(3) }
 
-    // --- 新增：检查当前日期是否为4月1日 ---
     val isAprilFools by remember {
         val calendar = Calendar.getInstance()
         mutableStateOf(
@@ -164,13 +171,38 @@ fun HomeScreen(
         }
     }
 
-    val displayNotes = remember(uiState.notes, currentFilter) {
+    // --- 标签筛选相关状态 ---
+    var unselectedTags by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var isUntaggedUnselected by rememberSaveable { mutableStateOf(false) }
+
+    // --- 新增：标签栏展开状态 ---
+    var isTagsExpanded by rememberSaveable { mutableStateOf(false) }
+
+    val statusFilteredNotes = remember(uiState.notes, currentFilter) {
         val uniqueNotes = uiState.notes.distinctBy { it.id }
-        val sorted = uiState.notes.sortedBy { it.isDeleted }
+        val sorted = uniqueNotes.sortedBy { it.isDeleted }
         when (currentFilter) {
             "正常" -> sorted.filter { !it.isDeleted }
             "已删除" -> sorted.filter { it.isDeleted }
             else -> sorted
+        }
+    }
+
+    val allTags = remember(statusFilteredNotes) {
+        statusFilteredNotes.flatMap { it.tags }.distinct().sorted()
+    }
+
+    val isAllSelected = remember(allTags, unselectedTags, isUntaggedUnselected) {
+        allTags.none { it in unselectedTags } && !isUntaggedUnselected
+    }
+
+    val displayNotes = remember(statusFilteredNotes, unselectedTags, isUntaggedUnselected) {
+        statusFilteredNotes.filter { note ->
+            if (note.tags.isEmpty()) {
+                !isUntaggedUnselected
+            } else {
+                note.tags.any { it !in unselectedTags }
+            }
         }
     }
 
@@ -198,7 +230,6 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
 
-                            // --- 核心修改：彩蛋图标，基于日期显示 ---
                             AnimatedVisibility(
                                 visible = isAprilFools,
                                 enter = fadeIn() + scaleIn(),
@@ -318,11 +349,160 @@ fun HomeScreen(
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
+                // --- 修改后的标签选择栏：支持展开和自动换行 ---
+                AnimatedVisibility(
+                    visible = allTags.isNotEmpty() || statusFilteredNotes.any { it.tags.isEmpty() },
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .animateContentSize(), // 添加高度过渡动画
+                        verticalAlignment = if (isTagsExpanded) Alignment.Top else Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (isTagsExpanded) {
+                                // 展开状态：使用 FlowRow 自动换行
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = isAllSelected,
+                                        onClick = {
+                                            if (isAllSelected) {
+                                                unselectedTags = allTags.toSet()
+                                                isUntaggedUnselected = true
+                                            } else {
+                                                unselectedTags = emptySet()
+                                                isUntaggedUnselected = false
+                                            }
+                                        },
+                                        label = { Text("全部") }
+                                    )
+
+                                    if (statusFilteredNotes.any { it.tags.isEmpty() }) {
+                                        FilterChip(
+                                            selected = !isUntaggedUnselected,
+                                            onClick = { isUntaggedUnselected = !isUntaggedUnselected },
+                                            label = { Text("无标签") }
+                                        )
+                                    }
+
+                                    if (allTags.isNotEmpty()) {
+                                        // 在 FlowRow 中用 Box 居中对齐分割线
+                                        Box(
+                                            modifier = Modifier.height(32.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            VerticalDivider(
+                                                modifier = Modifier.height(24.dp).padding(horizontal = 4.dp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                            )
+                                        }
+                                    }
+
+                                    allTags.forEach { tag ->
+                                        val isSelected = tag !in unselectedTags
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = {
+                                                unselectedTags = if (isSelected) {
+                                                    unselectedTags + tag
+                                                } else {
+                                                    unselectedTags - tag
+                                                }
+                                            },
+                                            label = { Text(tag) }
+                                        )
+                                    }
+                                }
+                            } else {
+                                // 收起状态：单行横向滑动
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    FilterChip(
+                                        selected = isAllSelected,
+                                        onClick = {
+                                            if (isAllSelected) {
+                                                unselectedTags = allTags.toSet()
+                                                isUntaggedUnselected = true
+                                            } else {
+                                                unselectedTags = emptySet()
+                                                isUntaggedUnselected = false
+                                            }
+                                        },
+                                        label = { Text("全部") }
+                                    )
+
+                                    if (statusFilteredNotes.any { it.tags.isEmpty() }) {
+                                        FilterChip(
+                                            selected = !isUntaggedUnselected,
+                                            onClick = { isUntaggedUnselected = !isUntaggedUnselected },
+                                            label = { Text("无标签") }
+                                        )
+                                    }
+
+                                    if (allTags.isNotEmpty()) {
+                                        Box(
+                                            modifier = Modifier.height(32.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            VerticalDivider(
+                                                modifier = Modifier.height(24.dp).padding(horizontal = 4.dp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                            )
+                                        }
+                                    }
+
+                                    allTags.forEach { tag ->
+                                        val isSelected = tag !in unselectedTags
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = {
+                                                unselectedTags = if (isSelected) {
+                                                    unselectedTags + tag
+                                                } else {
+                                                    unselectedTags - tag
+                                                }
+                                            },
+                                            label = { Text(tag) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 侧边展开/收起按钮
+                        IconButton(
+                            onClick = { isTagsExpanded = !isTagsExpanded },
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isTagsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (isTagsExpanded) "收起" else "展开",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
                 when {
                     uiState.isLoading && uiState.notes.isEmpty() -> {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
+                                .weight(1f)
+                                .fillMaxWidth()
                                 .padding(top = 8.dp),
                             contentAlignment = Alignment.Center,
                         ) {
@@ -332,7 +512,9 @@ fun HomeScreen(
 
                     uiState.errorMessage != null && uiState.notes.isEmpty() -> {
                         Box(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
                             contentAlignment = Alignment.Center,
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -353,7 +535,9 @@ fun HomeScreen(
 
                     displayNotes.isEmpty() -> {
                         Box(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
@@ -367,10 +551,12 @@ fun HomeScreen(
                         LazyVerticalStaggeredGrid(
                             columns = StaggeredGridCells.Adaptive(minSize = 240.dp),
                             state = gridState,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
                             contentPadding = PaddingValues(
                                 start = 16.dp,
-                                top = 16.dp,
+                                top = 8.dp,
                                 end = 16.dp,
                                 bottom = 96.dp
                             ),

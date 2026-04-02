@@ -3,7 +3,7 @@ package com.fuwaki.synap.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize // --- 新增引入 ---
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -19,8 +19,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi // --- 新增引入 ---
-import androidx.compose.foundation.layout.FlowRow // --- 新增引入 ---
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,8 +40,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.ExpandLess // --- 新增引入 ---
-import androidx.compose.material.icons.filled.ExpandMore // --- 新增引入 ---
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -98,7 +98,7 @@ import java.util.Calendar
 import kotlin.math.PI
 import kotlin.math.sin
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) // --- 增加 ExperimentalLayoutApi ---
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
@@ -118,9 +118,13 @@ fun HomeScreen(
     var showFilterSheet by remember { mutableStateOf(false) }
     var currentFilter by rememberSaveable { mutableStateOf("全部") }
 
+    // --- 核心修复：撤销功能的真实状态管理 ---
     var deletedNoteToUndo by remember { mutableStateOf<Note?>(null) }
     var undoProgress by remember { mutableFloatStateOf(1f) }
     var timeLeftSeconds by remember { mutableIntStateOf(3) }
+
+    // 我们用一个本地列表来暂时隐藏被标记删除的笔记，等倒计时结束才真正通知 ViewModel 删除
+    var pendingDeleteNoteIds by remember { mutableStateOf(setOf<String>()) }
 
     val isAprilFools by remember {
         val calendar = Calendar.getInstance()
@@ -135,8 +139,10 @@ fun HomeScreen(
         label = "fab_dodge_animation"
     )
 
+    // --- 核心修复：倒计时逻辑 ---
     LaunchedEffect(deletedNoteToUndo) {
-        if (deletedNoteToUndo != null) {
+        val note = deletedNoteToUndo
+        if (note != null) {
             var timeLeft = 3000L
             val interval = 16L
             while (timeLeft > 0) {
@@ -144,6 +150,11 @@ fun HomeScreen(
                 timeLeft -= interval
                 undoProgress = timeLeft.toFloat() / 3000f
                 timeLeftSeconds = kotlin.math.ceil(timeLeft / 1000f).toInt()
+            }
+            // 倒计时结束，如果这个笔记还在 pending 列表里，说明用户没点撤销
+            if (note.id in pendingDeleteNoteIds) {
+                pendingDeleteNoteIds = pendingDeleteNoteIds - note.id
+                onToggleDeleted(note) // 真正触发删除（传给 ViewModel 存入数据库）
             }
             deletedNoteToUndo = null
         }
@@ -171,16 +182,17 @@ fun HomeScreen(
         }
     }
 
-    // --- 标签筛选相关状态 ---
     var unselectedTags by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var isUntaggedUnselected by rememberSaveable { mutableStateOf(false) }
-
-    // --- 新增：标签栏展开状态 ---
     var isTagsExpanded by rememberSaveable { mutableStateOf(false) }
 
-    val statusFilteredNotes = remember(uiState.notes, currentFilter) {
+    // --- 核心修复：在初步过滤时，把处于“待删除”状态（pendingDeleteNoteIds）的笔记从列表中剔除 ---
+    val statusFilteredNotes = remember(uiState.notes, currentFilter, pendingDeleteNoteIds) {
         val uniqueNotes = uiState.notes.distinctBy { it.id }
-        val sorted = uniqueNotes.sortedBy { it.isDeleted }
+        // 过滤掉正在倒计时的笔记
+        val visibleNotes = uniqueNotes.filter { it.id !in pendingDeleteNoteIds }
+
+        val sorted = visibleNotes.sortedBy { it.isDeleted }
         when (currentFilter) {
             "正常" -> sorted.filter { !it.isDeleted }
             "已删除" -> sorted.filter { it.isDeleted }
@@ -349,7 +361,6 @@ fun HomeScreen(
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
-                // --- 修改后的标签选择栏：支持展开和自动换行 ---
                 AnimatedVisibility(
                     visible = allTags.isNotEmpty() || statusFilteredNotes.any { it.tags.isEmpty() },
                     enter = expandVertically() + fadeIn(),
@@ -359,12 +370,11 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .animateContentSize(), // 添加高度过渡动画
+                            .animateContentSize(),
                         verticalAlignment = if (isTagsExpanded) Alignment.Top else Alignment.CenterVertically
                     ) {
                         Box(modifier = Modifier.weight(1f)) {
                             if (isTagsExpanded) {
-                                // 展开状态：使用 FlowRow 自动换行
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -393,7 +403,6 @@ fun HomeScreen(
                                     }
 
                                     if (allTags.isNotEmpty()) {
-                                        // 在 FlowRow 中用 Box 居中对齐分割线
                                         Box(
                                             modifier = Modifier.height(32.dp),
                                             contentAlignment = Alignment.Center
@@ -421,7 +430,6 @@ fun HomeScreen(
                                     }
                                 }
                             } else {
-                                // 收起状态：单行横向滑动
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -481,7 +489,6 @@ fun HomeScreen(
                             }
                         }
 
-                        // 侧边展开/收起按钮
                         IconButton(
                             onClick = { isTagsExpanded = !isTagsExpanded },
                             modifier = Modifier
@@ -567,11 +574,17 @@ fun HomeScreen(
                                 NoteCardItem(
                                     note = note,
                                     onClick = { onOpenNote(note.id) },
+                                    // --- 核心修复：把直接删除改为暂存待删除列表，并唤起弹窗 ---
                                     onToggleDeleted = {
-                                        onToggleDeleted(note)
                                         if (!note.isDeleted) {
+                                            // 如果当前是正常状态，准备删除：
+                                            // 先把它塞进暂存列表让 UI 隐藏，然后弹出撤销框
+                                            pendingDeleteNoteIds = pendingDeleteNoteIds + note.id
                                             deletedNoteToUndo = note
                                             undoProgress = 1f
+                                        } else {
+                                            // 如果是从垃圾篓里恢复，直接调用 ViewModel
+                                            onToggleDeleted(note)
                                         }
                                     },
                                     onReply = { onReplyToNote(note.id, note.content) },
@@ -621,7 +634,10 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
                                     .clickable {
-                                        deletedNoteToUndo?.let { note -> onToggleDeleted(note) }
+                                        // --- 核心修复：点击撤销，只需把它从暂存列表里拿出来，UI 就会自动恢复显示 ---
+                                        deletedNoteToUndo?.let { note ->
+                                            pendingDeleteNoteIds = pendingDeleteNoteIds - note.id
+                                        }
                                         deletedNoteToUndo = null
                                     }
                                     .padding(8.dp)

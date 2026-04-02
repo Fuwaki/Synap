@@ -1,8 +1,6 @@
 package com.fuwaki.synap.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,16 +28,11 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,39 +49,15 @@ fun NoteCardItem(
     onClick: () -> Unit,
     onToggleDeleted: () -> Unit,
     onReply: () -> Unit,
-    animationDelayMillis: Int = 0,
+    animationDelayMillis: Int = 0, // 保留参数占位，避免调用方报错
 ) {
     val scope = rememberCoroutineScope()
 
-    var entered by remember(note.id) { mutableStateOf(false) }
-    LaunchedEffect(note.id) {
-        if (animationDelayMillis > 0) {
-            delay(animationDelayMillis.toLong())
-        }
-        entered = true
-    }
-    val cardAlpha by animateFloatAsState(
-        targetValue = if (entered) 1f else 0f,
-        animationSpec = tween(durationMillis = 320),
-        label = "note_card_alpha",
-    )
-    val cardOffsetY by animateFloatAsState(
-        targetValue = if (entered) 0f else 28f,
-        animationSpec = tween(durationMillis = 380),
-        label = "note_card_offset_y",
-    )
-    val cardScale by animateFloatAsState(
-        targetValue = if (entered) 1f else 0.97f,
-        animationSpec = tween(durationMillis = 320),
-        label = "note_card_scale",
-    )
-
     val dismissState = rememberSwipeToDismissBoxState(
-        // --- 核心修复 1：将滑动判定阈值调大到宽度的 50%，防止误触 ---
-        positionalThreshold = { totalDistance -> totalDistance * 0.5f },
         confirmValueChange = { dismissValue ->
             when (dismissValue) {
                 SwipeToDismissBoxValue.StartToEnd -> {
+                    // 这里的 delay 仅为了保留原生滑动回弹动画的视觉缓冲
                     scope.launch {
                         delay(150)
                         onToggleDeleted()
@@ -159,12 +128,6 @@ fun NoteCardItem(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer {
-                    alpha = cardAlpha
-                    translationY = cardOffsetY
-                    scaleX = cardScale
-                    scaleY = cardScale
-                }
                 .clickable(
                     enabled = !note.isDeleted,
                     onClick = onClick

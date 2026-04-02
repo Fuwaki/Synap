@@ -67,8 +67,9 @@ import com.fuwaki.synap.ui.screens.LanguageSelectionScreen
 import com.fuwaki.synap.ui.screens.NewNoteScreen
 import com.fuwaki.synap.ui.screens.NoteDetailScreen
 import com.fuwaki.synap.ui.screens.SettingsScreen
-import com.fuwaki.synap.ui.screens.TypographySettingsScreen // --- 新增引入 ---
+import com.fuwaki.synap.ui.screens.TypographySettingsScreen
 import com.fuwaki.synap.ui.screens.SearchScreen
+import com.fuwaki.synap.ui.screens.TutorialScreen // --- 新增引入 ---
 import com.fuwaki.synap.ui.theme.MyApplicationTheme
 import com.fuwaki.synap.ui.viewmodel.AppSessionUiState
 import com.fuwaki.synap.ui.viewmodel.AppSessionViewModel
@@ -101,7 +102,6 @@ import androidx.compose.foundation.layout.Arrangement
 
 val LocalNoteTextSize = compositionLocalOf { 16.sp }
 
-// --- 动态构建 Typography ---
 fun buildAppTypography(fontFamilySelection: String): Typography {
     val family = if (fontFamilySelection == "Serif") FontFamily.Serif else FontFamily.SansSerif
     return Typography(
@@ -212,11 +212,11 @@ private fun SynapApp() {
     val languages = remember(baseLanguages) { listOf("跟随系统语言设置") + baseLanguages }
 
     var noteTextSize by remember { mutableFloatStateOf(prefs.getFloat("noteTextSize", 16f)) }
-
-    // --- 新增：字体族持久化 ---
     var currentFontFamily by remember { mutableStateOf(prefs.getString("fontFamily", "SansSerif") ?: "SansSerif") }
-
     var handedness by remember { mutableStateOf(prefs.getString("handedness", "靠右") ?: "靠右") }
+
+    // --- 新增：引导页的持久化状态 ---
+    var hasSeenTutorial by remember { mutableStateOf(prefs.getBoolean("hasSeenTutorial", false)) }
 
     val sessionViewModel: AppSessionViewModel = hiltViewModel()
     val sessionState by sessionViewModel.uiState.collectAsState()
@@ -271,7 +271,6 @@ private fun SynapApp() {
 
             MaterialTheme(
                 colorScheme = finalScheme,
-                // --- 核心修改：动态应用字体设置 ---
                 typography = buildAppTypography(currentFontFamily),
                 shapes = MaterialTheme.shapes
             ) {
@@ -323,6 +322,11 @@ private fun SynapApp() {
                                 noteTextSize = it
                                 prefs.edit().putFloat("noteTextSize", it).apply()
                             },
+                            hasSeenTutorial = hasSeenTutorial,
+                            onTutorialFinished = {
+                                hasSeenTutorial = true
+                                prefs.edit().putBoolean("hasSeenTutorial", true).apply()
+                            },
                             databaseActivity = activity,
                         )
                     }
@@ -350,6 +354,8 @@ private fun SynapNavGraph(
     onFontFamilyChange: (String) -> Unit,
     noteTextSize: Float,
     onNoteTextSizeChange: (Float) -> Unit,
+    hasSeenTutorial: Boolean, // --- 新增 ---
+    onTutorialFinished: () -> Unit, // --- 新增 ---
     databaseActivity: MainActivity?,
 ) {
     val navController = rememberNavController()
@@ -359,10 +365,14 @@ private fun SynapNavGraph(
     val isLargeScreen = configuration.screenWidthDp >= 600
     var showSettingsSidebar by rememberSaveable { mutableStateOf(false) }
 
+    // --- 核心修改：动态设置导航起点 ---
+    // 如果看过教程，就去 home；如果没看过，去 tutorial
+    val startDestination = remember { if (hasSeenTutorial) "home" else "tutorial" }
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-            startDestination = "home",
+            startDestination = startDestination,
             enterTransition = {
                 slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(400))
             },
@@ -377,6 +387,19 @@ private fun SynapNavGraph(
             },
             modifier = Modifier.fillMaxSize()
         ) {
+            // --- 新增：教程页的路由配置 ---
+            composable("tutorial") {
+                TutorialScreen(
+                    onFinishTutorial = {
+                        onTutorialFinished()
+                        // 点击按钮后，跳转到首页，并且从返回栈里把教程页彻底清空
+                        navController.navigate("home") {
+                            popUpTo("tutorial") { inclusive = true }
+                        }
+                    }
+                )
+            }
+
             composable(
                 route = "home",
                 enterTransition = { fadeIn() },
@@ -475,7 +498,7 @@ private fun SynapNavGraph(
                     handedness = handedness,
                     onHandednessChange = onHandednessChange,
                     databaseActivity = databaseActivity,
-                    onNavigateToTypographySettings = { navController.navigate("typography_settings") }, // --- 新增路由 ---
+                    onNavigateToTypographySettings = { navController.navigate("typography_settings") },
                     onNavigateToLanguageSelection = { navController.navigate("language_selection") },
                     onNavigateBack = { navController.popBackStack() }
                 )
@@ -490,7 +513,6 @@ private fun SynapNavGraph(
                 )
             }
 
-            // --- 新增：排版设置路由 ---
             composable("typography_settings") {
                 TypographySettingsScreen(
                     currentFontFamily = currentFontFamily,

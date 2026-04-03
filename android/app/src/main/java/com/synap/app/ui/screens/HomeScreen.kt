@@ -179,6 +179,21 @@ fun HomeScreen(
 
     var pendingDeleteNoteIds by remember { mutableStateOf(setOf<String>()) }
 
+    fun finalizePendingDelete(note: Note) {
+        if (note.id in pendingDeleteNoteIds) {
+            pendingDeleteNoteIds = pendingDeleteNoteIds - note.id
+            onToggleDeleted(note)
+        }
+    }
+
+    fun showUndoForDeletedNote(note: Note) {
+        deletedNoteToUndo?.takeIf { it.id != note.id }?.let(::finalizePendingDelete)
+        pendingDeleteNoteIds = pendingDeleteNoteIds + note.id
+        deletedNoteToUndo = note
+        undoProgress = 1f
+        timeLeftSeconds = 3
+    }
+
     val currentEasterEgg by remember {
         val calendar = Calendar.getInstance()
         val currentMonth = calendar.get(Calendar.MONTH)
@@ -206,6 +221,8 @@ fun HomeScreen(
     LaunchedEffect(deletedNoteToUndo) {
         val note = deletedNoteToUndo
         if (note != null) {
+            undoProgress = 1f
+            timeLeftSeconds = 3
             var timeLeft = 3000L
             val interval = 16L
             while (timeLeft > 0) {
@@ -214,10 +231,7 @@ fun HomeScreen(
                 undoProgress = timeLeft.toFloat() / 3000f
                 timeLeftSeconds = kotlin.math.ceil(timeLeft / 1000f).toInt()
             }
-            if (note.id in pendingDeleteNoteIds) {
-                pendingDeleteNoteIds = pendingDeleteNoteIds - note.id
-                onToggleDeleted(note)
-            }
+            finalizePendingDelete(note)
             deletedNoteToUndo = null
         }
     }
@@ -648,9 +662,7 @@ fun HomeScreen(
                                     onClick = { onOpenNote(note.id) },
                                     onToggleDeleted = {
                                         if (!note.isDeleted) {
-                                            pendingDeleteNoteIds = pendingDeleteNoteIds + note.id
-                                            deletedNoteToUndo = note
-                                            undoProgress = 1f
+                                            showUndoForDeletedNote(note)
                                         } else {
                                             onToggleDeleted(note)
                                         }

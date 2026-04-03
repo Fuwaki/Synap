@@ -1,6 +1,6 @@
 use std::collections::{HashSet, VecDeque};
 
-use redb::{ReadTransaction, ReadableTable, WriteTransaction};
+use redb::{ReadTransaction, WriteTransaction};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -257,22 +257,13 @@ impl Note {
 
         NOTE_STORE.put(tx, note_id.as_bytes(), &block)?;
 
-        let mut alias_table = tx.open_table(ID_ALIAS.table_def())?;
         let note_id_bytes = note_id.into_bytes();
-        let alias_value = postcard::to_allocvec(&note_id_bytes).map_err(|e| {
-            redb::Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-        })?;
-        let should_insert_alias = match alias_table.get(block.short_id)? {
-            Some(existing) => {
-                let existing_id: BlockId = postcard::from_bytes(existing.value()).map_err(|e| {
-                    redb::Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-                })?;
-                existing_id == note_id_bytes
-            }
+        let should_insert_alias = match ID_ALIAS.get_in_write(tx, block.short_id)? {
+            Some(existing_id) => existing_id == note_id_bytes,
             None => true,
         };
         if should_insert_alias {
-            alias_table.insert(block.short_id, alias_value.as_slice())?;
+            ID_ALIAS.put(tx, block.short_id, &note_id_bytes)?;
         }
 
         for tag_id in &tag_ids {

@@ -97,6 +97,8 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.math.PI
 import kotlin.math.sin
+import androidx.compose.ui.res.stringResource
+import com.fuwaki.synap.R
 
 // --- 新增：定义节日彩蛋数据结构 ---
 private data class EasterEgg(
@@ -391,7 +393,7 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    text = "搜索笔记、标签、片段...",
+                                    text = stringResource(R.string.home_search_title),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodyLarge
                                 )
@@ -419,14 +421,14 @@ fun HomeScreen(
                             }
                         },
                         icon = { Icon(Icons.Filled.ArrowUpward, contentDescription = null) },
-                        text = { Text(text = "回到顶部") },
+                        text = { Text(text = stringResource(R.string.backtop)) },
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
 
                 FloatingActionButton(onClick = onComposeNote) {
-                    Icon(Icons.Filled.Add, contentDescription = "创建笔记")
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
                 }
             }
         },
@@ -470,14 +472,14 @@ fun HomeScreen(
                                                 isUntaggedUnselected = false
                                             }
                                         },
-                                        label = { Text("全部") }
+                                        label = { Text(stringResource(R.string.home_tagbar_all)) }
                                     )
 
                                     if (statusFilteredNotes.any { it.tags.isEmpty() }) {
                                         FilterChip(
                                             selected = !isUntaggedUnselected,
                                             onClick = { isUntaggedUnselected = !isUntaggedUnselected },
-                                            label = { Text("无标签") }
+                                            label = { Text(stringResource(R.string.home_tagbar_none)) }
                                         )
                                     }
 
@@ -745,7 +747,7 @@ fun HomeScreen(
                     .padding(bottom = 48.dp)
             ) {
                 Text(
-                    text = "筛选",
+                    text = stringResource(R.string.home_filter_title),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -759,7 +761,7 @@ fun HomeScreen(
                             currentFilter = "全部"
                             showFilterSheet = false
                         },
-                        label = { Text("全部") }
+                        label = { Text(stringResource(R.string.home_filter_delete_all)) }
                     )
                     FilterChip(
                         selected = currentFilter == "正常",
@@ -767,7 +769,7 @@ fun HomeScreen(
                             currentFilter = "正常"
                             showFilterSheet = false
                         },
-                        label = { Text("正常") }
+                        label = { Text(stringResource(R.string.home_filter_delete_undelete)) }
                     )
                     FilterChip(
                         selected = currentFilter == "已删除",
@@ -775,7 +777,7 @@ fun HomeScreen(
                             currentFilter = "已删除"
                             showFilterSheet = false
                         },
-                        label = { Text("已删除") }
+                        label = { Text(stringResource(R.string.home_filter_delete_delete)) }
                     )
                 }
             }

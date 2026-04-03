@@ -37,10 +37,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fuwaki.synap.R // 导入 R 文件
 
 private val poetryList = listOf(
     "“中国人的性情是总喜欢调和折中的……譬如你说，这屋子太暗，须在这里开一个窗，大家一定不允许的。但如果你主张拆掉屋顶，他们就来调和，愿意开窗了。”" to "—— 鲁迅《无声的中国》",
@@ -68,10 +70,10 @@ fun TypographySettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("笔记文字样式") },
+                title = { Text(stringResource(R.string.note_typography_style)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
@@ -87,7 +89,7 @@ fun TypographySettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "字体",
+                text = stringResource(R.string.font_family),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
@@ -99,8 +101,8 @@ fun TypographySettingsScreen(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 listOf(
-                    "SansSerif" to "无衬线字体 (默认)",
-                    "Serif" to "衬线字体"
+                    "SansSerif" to stringResource(R.string.font_sans_serif),
+                    "Serif" to stringResource(R.string.font_serif)
                 ).forEachIndexed { index, option ->
                     val isSelected = currentFontFamily == option.first
                     Row(
@@ -139,7 +141,7 @@ fun TypographySettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "字重",
+                text = stringResource(R.string.font_weight),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
@@ -157,7 +159,7 @@ fun TypographySettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "笔记文字字重 (当前为$currentFontWeight)",
+                        text = stringResource(R.string.current_font_weight, currentFontWeight),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -165,7 +167,7 @@ fun TypographySettingsScreen(
                         onClick = { onFontWeightChange(400) },
                         enabled = currentFontWeight != 400
                     ) {
-                        Text("恢复默认")
+                        Text(stringResource(R.string.restore_default))
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -177,7 +179,7 @@ fun TypographySettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "*部分字体的字重调节可能不会全部生效",
+                    text = stringResource(R.string.font_weight_hint),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -186,7 +188,7 @@ fun TypographySettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "字号",
+                text = stringResource(R.string.font_size),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
@@ -204,7 +206,7 @@ fun TypographySettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "笔记文字大小 (当前为${noteTextSize.toInt()}sp)",
+                        text = stringResource(R.string.current_font_size, noteTextSize.toInt()),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -212,7 +214,7 @@ fun TypographySettingsScreen(
                         onClick = { onNoteTextSizeChange(16f) },
                         enabled = noteTextSize != 16f
                     ) {
-                        Text("恢复默认")
+                        Text(stringResource(R.string.restore_default))
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -231,7 +233,7 @@ fun TypographySettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "笔记文字预览",
+                        text = stringResource(R.string.typography_preview),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -241,7 +243,7 @@ fun TypographySettingsScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "切换预览诗词",
+                            contentDescription = stringResource(R.string.switch_preview),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }

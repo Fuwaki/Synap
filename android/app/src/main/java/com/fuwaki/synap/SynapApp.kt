@@ -2,6 +2,7 @@ package com.fuwaki.synap
 
 import android.content.Context
 import android.os.Build
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,7 +32,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.os.LocaleListCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fuwaki.synap.ui.data.AppLocale // 引入你新建的数据类
 import com.fuwaki.synap.ui.data.sampleLanguages
 import com.fuwaki.synap.ui.navigation.SynapNavGraph
 import com.fuwaki.synap.ui.theme.MyApplicationTheme
@@ -54,12 +57,14 @@ fun SynapApp(activity: MainActivity?) {
     var customThemeHue by remember { mutableFloatStateOf(prefs.getFloat("customThemeHue", 210f)) }
 
     var selectedLanguageIndex by remember { mutableIntStateOf(prefs.getInt("selectedLanguage", 0)) }
+    // --- 修改：获取包含 Tag 的语言列表，并提取出用于 UI 展示的 String 列表 ---
     val baseLanguages = remember { sampleLanguages() }
-    val languages = remember(baseLanguages) { listOf("跟随系统语言设置") + baseLanguages }
+    val displayLanguages = remember(baseLanguages) {
+        listOf("跟随系统语言设置") + baseLanguages.map { it.displayName }
+    }
 
     var noteTextSize by remember { mutableFloatStateOf(prefs.getFloat("noteTextSize", 16f)) }
     var currentFontFamily by remember { mutableStateOf(prefs.getString("fontFamily", "SansSerif") ?: "SansSerif") }
-    // --- 新增：读取和存储字重 ---
     var currentFontWeight by remember { mutableIntStateOf(prefs.getInt("fontWeight", 400)) }
 
     var handedness by remember { mutableStateOf(prefs.getString("handedness", "靠右") ?: "靠右") }
@@ -78,7 +83,6 @@ fun SynapApp(activity: MainActivity?) {
     val actualFontFamily = if (currentFontFamily == "Serif") FontFamily.Serif else FontFamily.SansSerif
     val actualFontWeight = FontWeight(currentFontWeight)
 
-    // --- 把字号、字体、字重都通过 Local 往下传 ---
     CompositionLocalProvider(
         LocalNoteTextSize provides noteTextSize.sp,
         LocalNoteFontFamily provides actualFontFamily,
@@ -117,7 +121,6 @@ fun SynapApp(activity: MainActivity?) {
                 currentScheme
             }
 
-            // --- 核心修改：让 Typography() 恢复默认，仅通过 Local 影响正文 ---
             MaterialTheme(colorScheme = finalScheme, typography = Typography(), shapes = MaterialTheme.shapes) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     when (val state = sessionState) {
@@ -128,9 +131,23 @@ fun SynapApp(activity: MainActivity?) {
                             useMonet = useMonet, supportsMonet = supportsMonet, onUseMonetChange = { useMonet = it; prefs.edit().putBoolean("useMonet", it).apply() },
                             customThemeHue = customThemeHue, onCustomThemeHueChange = { customThemeHue = it; prefs.edit().putFloat("customThemeHue", it).apply() },
                             handedness = handedness, onHandednessChange = { handedness = it; prefs.edit().putString("handedness", it).apply() },
-                            languages = languages, selectedLanguageIndex = selectedLanguageIndex, onLanguageSelect = { selectedLanguageIndex = it; prefs.edit().putInt("selectedLanguage", it).apply() },
+                            // --- 修改：将显示用的 String 列表传给 UI，并执行语言切换逻辑 ---
+                            languages = displayLanguages,
+                            selectedLanguageIndex = selectedLanguageIndex,
+                            onLanguageSelect = { index ->
+                                selectedLanguageIndex = index
+                                prefs.edit().putInt("selectedLanguage", index).apply()
+
+                                // 根据索引切换语言
+                                if (index == 0) {
+                                    AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+                                } else {
+                                    val tag = baseLanguages[index - 1].tag
+                                    AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(tag))
+                                }
+                            },
                             currentFontFamily = currentFontFamily, onFontFamilyChange = { currentFontFamily = it; prefs.edit().putString("fontFamily", it).apply() },
-                            currentFontWeight = currentFontWeight, onFontWeightChange = { currentFontWeight = it; prefs.edit().putInt("fontWeight", it).apply() }, // --- 传递字重 ---
+                            currentFontWeight = currentFontWeight, onFontWeightChange = { currentFontWeight = it; prefs.edit().putInt("fontWeight", it).apply() },
                             noteTextSize = noteTextSize, onNoteTextSizeChange = { noteTextSize = it; prefs.edit().putFloat("noteTextSize", it).apply() },
                             hasSeenTutorial = hasSeenTutorial, onTutorialFinished = { hasSeenTutorial = true; prefs.edit().putBoolean("hasSeenTutorial", true).apply() },
                             databaseActivity = activity,

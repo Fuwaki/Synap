@@ -3,7 +3,6 @@ package com.fuwaki.synap
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.content.FileProvider
 import com.fuwaki.synap.data.service.SynapServiceApi
@@ -12,9 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
+import androidx.appcompat.app.AppCompatActivity
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var synapService: SynapServiceApi
 

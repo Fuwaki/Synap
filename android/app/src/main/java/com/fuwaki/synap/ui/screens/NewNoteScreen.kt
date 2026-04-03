@@ -62,6 +62,8 @@ import com.fuwaki.synap.LocalNoteTextSize
 import com.fuwaki.synap.ui.viewmodel.EditorMode
 import com.fuwaki.synap.ui.viewmodel.EditorUiState
 import kotlinx.coroutines.delay
+import androidx.compose.ui.res.stringResource
+import com.fuwaki.synap.R
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -101,9 +103,9 @@ fun NewNoteScreen(
                 title = {
                     Text(
                         when (uiState.mode) {
-                            EditorMode.Create -> "新建笔记"
-                            is EditorMode.Reply -> "回复笔记"
-                            is EditorMode.Edit -> "编辑笔记"
+                            EditorMode.Create -> stringResource(R.string.edit_title_creat)
+                            is EditorMode.Reply -> stringResource(R.string.edit_title_reply)
+                            is EditorMode.Edit -> stringResource(R.string.edit_title_edit)
                         },
                     )
                 },
@@ -145,7 +147,8 @@ fun NewNoteScreen(
                                 .padding(bottom = 12.dp),
                         ) {
                             Text(
-                                text = "回复自“${mode.parentSummary}”",
+                                text = "“${stringResource(R.string.reply)}${mode.parentSummary}”"
+                                ,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -192,7 +195,7 @@ fun NewNoteScreen(
                         lineHeight = LocalNoteTextSize.current * 1.5f,
                         color = MaterialTheme.colorScheme.onSurface
                     ),
-                    placeholder = { Text("开始输入正文...") },
+                    placeholder = { Text(stringResource(R.string.edit_placeholder)) },
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
@@ -226,7 +229,7 @@ fun NewNoteScreen(
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Filled.Close,
-                                    contentDescription = "删除标签",
+                                    contentDescription = stringResource(R.string.edit_tag_delete),
                                     modifier = Modifier
                                         .size(InputChipDefaults.AvatarSize)
                                         .clickable { onRemoveTag(index) }
@@ -238,7 +241,7 @@ fun NewNoteScreen(
                     if (!isTagInputVisible) {
                         SuggestionChip(
                             onClick = { isTagInputVisible = true },
-                            label = { Text(" 添加标签") },
+                            label = { Text(stringResource(R.string.edit_tag_add)) },
                             icon = {
                                 Icon(
                                     imageVector = Icons.Filled.Add,
@@ -254,7 +257,7 @@ fun NewNoteScreen(
                     OutlinedTextField(
                         value = tagInputText,
                         onValueChange = { tagInputText = it },
-                        placeholder = { Text("在此输入标签文字") },
+                        placeholder = { Text(stringResource(R.string.edit_tag_placeholder)) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(tagFocusRequester)
@@ -284,7 +287,7 @@ fun NewNoteScreen(
                                     tagInputText = ""
                                     isTagInputVisible = false
                                 }) {
-                                    Icon(Icons.Filled.Check, contentDescription = "确认添加")
+                                    Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.edit_tag_check))
                                 }
                             }
                         }

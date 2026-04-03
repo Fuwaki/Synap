@@ -48,6 +48,8 @@ import com.fuwaki.synap.ui.model.Note
 import com.fuwaki.synap.ui.util.formatNoteTime
 import com.fuwaki.synap.ui.viewmodel.DetailUiState
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
+import com.fuwaki.synap.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,20 +76,23 @@ fun NoteDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("笔记详情") },
+                title = { Text(stringResource(R.string.notedetail_title)) },
                 navigationIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                            Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.back)
+                            )
                         }
                         IconButton(onClick = onNavigateHome) {
-                            Icon(Icons.Filled.Home, contentDescription = "主页")
+                            Icon(Icons.Filled.Home, contentDescription = stringResource(R.string.home)
+                            )
                         }
                     }
                 },
                 actions = {
                     IconButton(onClick = onDelete, enabled = uiState.note != null) {
-                        Icon(Icons.Filled.Delete, contentDescription = "删除")
+                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete)
+                        )
                     }
                 },
             )
@@ -110,7 +115,7 @@ fun NoteDetailScreen(
                                 }
                             },
                             icon = { Icon(Icons.Filled.ArrowUpward, contentDescription = null) },
-                            text = { Text(text = "回到顶部") },
+                            text = { Text(text = stringResource(R.string.backtop)) },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                         )
@@ -121,7 +126,7 @@ fun NoteDetailScreen(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         icon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                        text = { Text(text = "编辑") }
+                        text = { Text(text = stringResource(R.string.edit)) }
                     )
 
                     ExtendedFloatingActionButton(
@@ -129,7 +134,7 @@ fun NoteDetailScreen(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         icon = { Icon(Icons.Filled.Reply, contentDescription = null) },
-                        text = { Text(text = "回复") }
+                        text = { Text(text = stringResource(R.string.reply)) }
                     )
                 }
             }
@@ -157,7 +162,7 @@ fun NoteDetailScreen(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = uiState.errorMessage ?: "笔记不存在",
+                    text = uiState.errorMessage ?: stringResource(R.string.notedetail_errorMessage),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -227,22 +232,22 @@ fun NoteDetailScreen(
             }
 
             RelationSection(
-                title = "源笔记",
+                title = stringResource(R.string.notedetail_origins),
                 notes = uiState.origins,
                 onOpenRelatedNote = onOpenRelatedNote,
             )
             RelationSection(
-                title = "上一版本",
+                title = stringResource(R.string.notedetail_previousVersions),
                 notes = uiState.previousVersions,
                 onOpenRelatedNote = onOpenRelatedNote,
             )
             RelationSection(
-                title = "下一版本",
+                title = stringResource(R.string.notedetail_nextVersions),
                 notes = uiState.nextVersions,
                 onOpenRelatedNote = onOpenRelatedNote,
             )
             RelationSection(
-                title = "回复",
+                title = stringResource(R.string.notedetail_replies),
                 notes = uiState.replies,
                 onOpenRelatedNote = onOpenRelatedNote,
             )

@@ -1,6 +1,61 @@
 use crate::text::sanitize_search_text;
 
-use super::types::{gram_weights, GramId, SparseVector};
+use crate::nlp::internal::{gram_weights, GramId, SparseVector, StableMap};
+use crate::nlp::traits::{LearnableTextEncoder, TextEncoder};
+
+#[derive(Debug)]
+pub(super) struct NgramTextEncoder {
+    ngram_size: usize,
+    gram_ids: StableMap<String, GramId>,
+    next_gram_id: GramId,
+}
+
+impl NgramTextEncoder {
+    pub(super) fn new(ngram_size: usize) -> Self {
+        Self {
+            ngram_size,
+            gram_ids: StableMap::default(),
+            next_gram_id: 0,
+        }
+    }
+
+    fn encode_with_resolver<F>(&self, text: &str, resolve: F) -> SparseVector
+    where
+        F: FnMut(&str) -> Option<GramId>,
+    {
+        build_term_frequencies_with_resolver(text, self.ngram_size, resolve)
+    }
+
+    fn resolve_or_insert_gram(&mut self, gram: &str) -> GramId {
+        if let Some(id) = self.gram_ids.get(gram).copied() {
+            return id;
+        }
+
+        let id = self.next_gram_id;
+        self.next_gram_id = self.next_gram_id.saturating_add(1);
+        self.gram_ids.insert(gram.to_owned(), id);
+        id
+    }
+
+    fn lookup_gram(&self, gram: &str) -> Option<GramId> {
+        self.gram_ids.get(gram).copied()
+    }
+}
+
+impl TextEncoder<SparseVector> for NgramTextEncoder {
+    fn encode(&self, text: &str) -> SparseVector {
+        self.encode_with_resolver(text, |gram| self.lookup_gram(gram))
+    }
+}
+
+impl LearnableTextEncoder<SparseVector> for NgramTextEncoder {
+    fn encode_with_updates(&mut self, text: &str) -> SparseVector {
+        let normalized = normalize_nlp_text(text);
+        build_term_frequencies_from_normalized_with_resolver(&normalized, self.ngram_size, |gram| {
+            Some(self.resolve_or_insert_gram(gram))
+        })
+    }
+}
 
 pub(super) fn normalize_nlp_text(content: &str) -> String {
     sanitize_search_text(content).to_lowercase()
@@ -47,7 +102,7 @@ where
     resolver(gram)
 }
 
-fn counts_to_sparse_vector(mut counts: super::types::GramWeights) -> SparseVector {
+fn counts_to_sparse_vector(mut counts: crate::nlp::internal::GramWeights) -> SparseVector {
     let mut vector: SparseVector = counts
         .drain()
         .map(|(gram_id, tf)| (gram_id, 1.0 + tf.ln()))

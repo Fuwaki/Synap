@@ -11,6 +11,7 @@ use crate::{
         onetomany::{OneToMany, OneToManyReader},
         setstore::{SetReader, SetStore},
         types::BlockId,
+        vector::VectorStore,
     },
     error::NoteError,
     models::{tag::Tag, util::random_id},
@@ -53,6 +54,8 @@ const NOTE_LINK: DagStore = DagStore::new("NoteLinkForward", "NoteLinkRev");
 const NOTE_DELETE: SetStore<BlockId> = SetStore::new("NoteDeleted");
 // 可重建的二级索引：只追加 tag -> note 关系，不做物理删除。
 const NOTE_TAG_INDEX: OneToMany<BlockId, BlockId> = OneToMany::new("TagToNotes");
+// 向量索引：存储 note 的 embedding，可重建
+const NOTE_VECTOR_INDEX: VectorStore<Vec<f32>> = VectorStore::new("NoteVectors", 384);
 // ==========================================
 // Note：访问器 + 写操作
 // ==========================================
@@ -66,6 +69,7 @@ impl Note {
         NOTE_DELETE.init_table(tx)?;
         NOTE_LINK.init_tables(tx)?;
         NOTE_TAG_INDEX.init_table(tx)?;
+        NOTE_VECTOR_INDEX.init_table(tx)?;
         Ok(())
     }
 

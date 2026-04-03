@@ -1,13 +1,7 @@
-use super::{
-    text::{
-        build_term_frequencies_from_normalized_with_resolver,
-        build_term_frequencies_with_resolver, normalize_nlp_text,
-    },
-    types::{
-        stable_map, stable_set, GramId, NlpDocument, SparseVector, StableMap, StableSet,
-        TagSuggestion,
-    },
-};
+use crate::nlp::internal::{stable_map, stable_set, GramId, SparseVector, StableMap, StableSet};
+use crate::nlp::tag::text::NgramTextEncoder;
+use crate::nlp::traits::{LearnableTextEncoder, TextEncoder};
+use crate::nlp::types::{NlpDocument, TagSuggestion};
 
 const NGRAM_SIZE: usize = 3;
 const GRAPH_WEIGHT: f32 = 0.1;
@@ -24,8 +18,7 @@ struct StoredDocument {
 #[derive(Debug)]
 pub struct NlpTagIndex {
     documents: StableMap<String, StoredDocument>,
-    gram_ids: StableMap<String, GramId>,
-    next_gram_id: GramId,
+    text_encoder: NgramTextEncoder,
     tag_vectors: StableMap<String, SparseVector>,
     tag_name_vectors: StableMap<String, SparseVector>,
     gram_to_tags: StableMap<GramId, StableSet<String>>,
@@ -40,8 +33,7 @@ impl Default for NlpTagIndex {
     fn default() -> Self {
         Self {
             documents: stable_map(),
-            gram_ids: stable_map(),
-            next_gram_id: 0,
+            text_encoder: NgramTextEncoder::new(NGRAM_SIZE),
             tag_vectors: stable_map(),
             tag_name_vectors: stable_map(),
             gram_to_tags: stable_map(),
@@ -98,16 +90,7 @@ impl NlpTagIndex {
             return Vec::new();
         }
 
-        let normalized_query = normalize_nlp_text(content);
-        if normalized_query.is_empty() {
-            return Vec::new();
-        }
-
-        let query_vector = build_term_frequencies_from_normalized_with_resolver(
-            &normalized_query,
-            NGRAM_SIZE,
-            |gram| self.lookup_gram(gram),
-        );
+        let query_vector = self.text_encoder.encode(content);
         if query_vector.is_empty() {
             return Vec::new();
         }
@@ -200,9 +183,7 @@ impl NlpTagIndex {
             return None;
         }
 
-        let vector = build_term_frequencies_with_resolver(&doc.content, NGRAM_SIZE, |gram| {
-            Some(self.resolve_or_insert_gram(gram))
-        });
+        let vector = self.text_encoder.encode_with_updates(&doc.content);
         if vector.is_empty() {
             return None;
         }
@@ -389,9 +370,7 @@ impl NlpTagIndex {
     }
 
     fn register_tag_name(&mut self, tag: &str) {
-        let vector = build_term_frequencies_with_resolver(tag, NGRAM_SIZE, |gram| {
-            Some(self.resolve_or_insert_gram(gram))
-        });
+        let vector = self.text_encoder.encode_with_updates(tag);
         if vector.is_empty() {
             return;
         }
@@ -424,21 +403,6 @@ impl NlpTagIndex {
             }
         }
     }
-
-    fn resolve_or_insert_gram(&mut self, gram: &str) -> GramId {
-        if let Some(id) = self.gram_ids.get(gram).copied() {
-            return id;
-        }
-
-        let id = self.next_gram_id;
-        self.next_gram_id = self.next_gram_id.saturating_add(1);
-        self.gram_ids.insert(gram.to_owned(), id);
-        id
-    }
-
-    fn lookup_gram(&self, gram: &str) -> Option<GramId> {
-        self.gram_ids.get(gram).copied()
-    }
 }
 
 fn normalize_tags(tags: Vec<String>) -> Vec<String> {
@@ -460,11 +424,20 @@ fn normalize_tags(tags: Vec<String>) -> Vec<String> {
 }
 
 fn vector_norm(vector: &SparseVector) -> f32 {
-    quantize_score(vector.iter().map(|(_, value)| value * value).sum::<f32>().sqrt())
+    quantize_score(
+        vector
+            .iter()
+            .map(|(_, value)| value * value)
+            .sum::<f32>()
+            .sqrt(),
+    )
 }
 
 fn top_scored(scores: &StableMap<String, f32>, limit: usize) -> Vec<(String, f32)> {
-    let mut items: Vec<(String, f32)> = scores.iter().map(|(tag, score)| (tag.clone(), *score)).collect();
+    let mut items: Vec<(String, f32)> = scores
+        .iter()
+        .map(|(tag, score)| (tag.clone(), *score))
+        .collect();
     items.sort_by(|left, right| {
         right
             .1

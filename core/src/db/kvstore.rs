@@ -433,6 +433,55 @@ mod tests {
     }
 
     #[test]
+    fn test_contains_does_not_decode_invalid_value() {
+        let db = temp_db();
+        let store: KvStore<BlockId, Block> = KvStore::new("contains_invalid_value");
+        let invalid = b"not a valid postcard payload";
+
+        let wtx = db.begin_write().unwrap();
+        {
+            let mut table = wtx.open_table(store.table_def()).unwrap();
+            table.insert(&id(12), invalid.as_slice()).unwrap();
+        }
+        wtx.commit().unwrap();
+
+        let rtx = db.begin_read().unwrap();
+        let reader = store.reader(&rtx).unwrap();
+
+        assert!(reader.contains(&id(12)).unwrap());
+        assert!(matches!(
+            reader.get(&id(12)),
+            Err(redb::Error::Io(ref io_err)) if io_err.kind() == io::ErrorKind::InvalidData
+        ));
+    }
+
+    #[test]
+    fn test_keys_do_not_decode_invalid_value() {
+        let db = temp_db();
+        let store: KvStore<BlockId, Block> = KvStore::new("keys_invalid_value");
+        let invalid = b"still not a valid postcard payload";
+
+        let wtx = db.begin_write().unwrap();
+        {
+            let mut table = wtx.open_table(store.table_def()).unwrap();
+            table.insert(&id(4), invalid.as_slice()).unwrap();
+            table.insert(&id(9), invalid.as_slice()).unwrap();
+        }
+        wtx.commit().unwrap();
+
+        let rtx = db.begin_read().unwrap();
+        let reader = store.reader(&rtx).unwrap();
+
+        let keys: Vec<u8> = reader
+            .keys()
+            .unwrap()
+            .map(|item| item.unwrap().value()[15])
+            .collect();
+
+        assert_eq!(keys, vec![4, 9]);
+    }
+
+    #[test]
     fn test_get_in_write_uses_same_codec_path() {
         let db = temp_db();
         let store: KvStore<BlockId, Block> = KvStore::new("write_get");

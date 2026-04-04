@@ -9,7 +9,9 @@ import com.synap.app.data.portal.CursorPortal
 import com.synap.app.data.portal.PortalState
 import com.synap.app.data.repository.SynapRepository
 import com.synap.app.ui.model.Note
+import com.synap.app.ui.model.TimelineSessionGroup
 import com.synap.app.ui.model.toUiNote
+import com.synap.app.ui.model.toUiSessionGroup
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,9 +24,12 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
     val query: String = "",
     val notes: List<Note> = emptyList(),
+    val sessionGroups: List<TimelineSessionGroup> = emptyList(),
     val isLoading: Boolean = true,
     val hasMore: Boolean = false,
     val isSearchMode: Boolean = false,
+    val isFilterPanelOpen: Boolean = false,
+    val showSessionFeed: Boolean = true,
     val availableTags: List<String> = emptyList(),
     val unselectedTags: Set<String> = emptySet(),
     val isUntaggedUnselected: Boolean = false,
@@ -42,22 +47,28 @@ private data class HomeFilterState(
     val availableTags: List<String>,
     val unselectedTags: Set<String>,
     val isUntaggedUnselected: Boolean,
+    val isFilterPanelOpen: Boolean,
 ) {
     fun toFeedFilter(): NoteFeedFilter {
         val selectedTags = availableTags.filterNot { it in unselectedTags }
         return NoteFeedFilter(
             selectedTags = selectedTags,
             includeUntagged = !isUntaggedUnselected,
-            tagFilterEnabled = unselectedTags.isNotEmpty() || isUntaggedUnselected,
+            tagFilterEnabled = isFilterPanelOpen && (unselectedTags.isNotEmpty() || isUntaggedUnselected),
             status = NoteFeedStatus.Normal,
         )
     }
+
+    fun shouldShowSessionFeed(): Boolean = !isFilterPanelOpen
 }
 
 private data class HomeFeedState(
     val notes: List<Note>,
+    val sessionGroups: List<TimelineSessionGroup>,
     val isLoading: Boolean,
     val hasMore: Boolean,
+    val isFilterPanelOpen: Boolean,
+    val showSessionFeed: Boolean,
     val availableTags: List<String>,
     val unselectedTags: Set<String>,
     val isUntaggedUnselected: Boolean,
@@ -70,6 +81,7 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
     private val pageLimit = 20u
     private val recentPortal = repository.openRecentPortal(limit = pageLimit)
+    private val recentSessionsPortal = repository.openRecentSessionsPortal(limit = pageLimit)
     private val query = MutableStateFlow("")
     private val searchResults = MutableStateFlow<List<Note>>(emptyList())
     private val isSearchLoading = MutableStateFlow(false)
@@ -78,6 +90,7 @@ class HomeViewModel @Inject constructor(
     private val availableTags = MutableStateFlow<List<String>>(emptyList())
     private val unselectedTags = MutableStateFlow<Set<String>>(emptySet())
     private val isUntaggedUnselected = MutableStateFlow(false)
+    private val isFilterPanelOpen = MutableStateFlow(false)
     private val filteredPortalState = MutableStateFlow(PortalState<NoteRecord>())
     private var filteredPortal: CursorPortal<NoteRecord>? = null
     private var filteredPortalKey: NoteFeedFilter? = null
@@ -100,33 +113,45 @@ class HomeViewModel @Inject constructor(
         availableTags,
         unselectedTags,
         isUntaggedUnselected,
-    ) { currentTags, currentUnselectedTags, currentIsUntaggedUnselected ->
+        isFilterPanelOpen,
+    ) { currentTags, currentUnselectedTags, currentIsUntaggedUnselected, currentIsFilterPanelOpen ->
         HomeFilterState(
             availableTags = currentTags,
             unselectedTags = currentUnselectedTags.intersect(currentTags.toSet()),
             isUntaggedUnselected = currentIsUntaggedUnselected,
+            isFilterPanelOpen = currentIsFilterPanelOpen,
         )
     }
 
     private val homeFeedState = combine(
         recentPortal.state,
+        recentSessionsPortal.state,
         filteredPortalState,
         filterState,
-    ) { recent, filtered, currentFilterState ->
+    ) { recent, recentSessions, filtered, currentFilterState ->
         val feedFilter = currentFilterState.toFeedFilter()
         val useFilteredPortal = shouldUseFilteredPortal(feedFilter)
+        val showSessionFeed = currentFilterState.shouldShowSessionFeed()
 
-        val activeFeed = if (useFilteredPortal) filtered else recent
-        val homeNotes = activeFeed.items.map { record -> record.toUiNote() }
+        val noteFeed = if (useFilteredPortal) filtered else recent
+        val homeNotes = noteFeed.items.map { record -> record.toUiNote() }
+        val sessionGroups = recentSessions.items.map { session -> session.toUiSessionGroup() }
 
         HomeFeedState(
             notes = homeNotes,
-            isLoading = activeFeed.isLoading,
-            hasMore = activeFeed.hasMore,
+            sessionGroups = sessionGroups,
+            isLoading = if (showSessionFeed) recentSessions.isLoading else noteFeed.isLoading,
+            hasMore = if (showSessionFeed) recentSessions.hasMore else noteFeed.hasMore,
+            isFilterPanelOpen = currentFilterState.isFilterPanelOpen,
+            showSessionFeed = showSessionFeed,
             availableTags = currentFilterState.availableTags,
             unselectedTags = currentFilterState.unselectedTags,
             isUntaggedUnselected = currentFilterState.isUntaggedUnselected,
-            errorMessage = activeFeed.error?.message,
+            errorMessage = if (showSessionFeed) {
+                recentSessions.error?.message
+            } else {
+                noteFeed.error?.message
+            },
         )
     }
 
@@ -140,9 +165,12 @@ class HomeViewModel @Inject constructor(
         HomeUiState(
             query = currentState.query,
             notes = if (searchMode) currentState.searchResults else currentHomeFeed.notes,
+            sessionGroups = if (searchMode) emptyList() else currentHomeFeed.sessionGroups,
             isLoading = if (searchMode) currentState.isSearchLoading else currentHomeFeed.isLoading,
             hasMore = if (searchMode) false else currentHomeFeed.hasMore,
             isSearchMode = searchMode,
+            isFilterPanelOpen = currentHomeFeed.isFilterPanelOpen,
+            showSessionFeed = !searchMode && currentHomeFeed.showSessionFeed,
             availableTags = currentHomeFeed.availableTags,
             unselectedTags = currentHomeFeed.unselectedTags,
             isUntaggedUnselected = currentHomeFeed.isUntaggedUnselected,
@@ -251,6 +279,24 @@ class HomeViewModel @Inject constructor(
         triggerFilterRefresh()
     }
 
+    fun setFilterPanelOpen(isOpen: Boolean) {
+        if (isFilterPanelOpen.value == isOpen) {
+            return
+        }
+
+        isFilterPanelOpen.value = isOpen
+
+        if (!isOpen) {
+            resetTagSelection()
+        }
+
+        if (query.value.isBlank()) {
+            viewModelScope.launch {
+                refreshHomeFeed()
+            }
+        }
+    }
+
     private suspend fun rerunSearch() {
         val currentQuery = query.value.trim()
         if (currentQuery.isBlank()) {
@@ -282,6 +328,7 @@ class HomeViewModel @Inject constructor(
             availableTags = currentTags,
             unselectedTags = effectiveUnselectedTags,
             isUntaggedUnselected = isUntaggedUnselected.value,
+            isFilterPanelOpen = isFilterPanelOpen.value,
         ).toFeedFilter()
     }
 
@@ -300,6 +347,7 @@ class HomeViewModel @Inject constructor(
 
     private fun invalidateHomePortals() {
         recentPortal.invalidate()
+        recentSessionsPortal.invalidate()
         filteredPortal?.invalidate()
     }
 
@@ -318,26 +366,34 @@ class HomeViewModel @Inject constructor(
     private suspend fun refreshHomeFeed() {
         val filter = currentHomeFilter()
 
-        if (shouldUseFilteredPortal(filter)) {
-            val portal = ensureFilteredPortal(filter)
-            portal.refresh()
-            filteredPortalState.value = portal.state.value
+        if (isFilterPanelOpen.value) {
+            if (shouldUseFilteredPortal(filter)) {
+                val portal = ensureFilteredPortal(filter)
+                portal.refresh()
+                filteredPortalState.value = portal.state.value
+            } else {
+                recentPortal.refresh()
+            }
         } else {
-            recentPortal.refresh()
+            recentSessionsPortal.refresh()
         }
     }
 
     private suspend fun loadMoreHomeFeed() {
         val filter = currentHomeFilter()
 
-        if (shouldUseFilteredPortal(filter)) {
-            val portal = ensureFilteredPortal(filter)
-            if (portal.state.value.hasMore) {
-                portal.loadNext()
-                filteredPortalState.value = portal.state.value
+        if (isFilterPanelOpen.value) {
+            if (shouldUseFilteredPortal(filter)) {
+                val portal = ensureFilteredPortal(filter)
+                if (portal.state.value.hasMore) {
+                    portal.loadNext()
+                    filteredPortalState.value = portal.state.value
+                }
+            } else if (recentPortal.state.value.hasMore) {
+                recentPortal.loadNext()
             }
-        } else if (recentPortal.state.value.hasMore) {
-            recentPortal.loadNext()
+        } else if (recentSessionsPortal.state.value.hasMore) {
+            recentSessionsPortal.loadNext()
         }
     }
 
@@ -347,5 +403,13 @@ class HomeViewModel @Inject constructor(
                 refreshHomeFeed()
             }
         }
+    }
+
+    private fun resetTagSelection() {
+        unselectedTags.value = emptySet()
+        isUntaggedUnselected.value = false
+        filteredPortal = null
+        filteredPortalKey = null
+        filteredPortalState.value = PortalState()
     }
 }

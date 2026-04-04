@@ -6,6 +6,11 @@ enum class NoteFeedStatus {
     Deleted,
 }
 
+enum class TimelineDirection {
+    Older,
+    Newer,
+}
+
 data class NoteFeedFilter(
     val selectedTags: List<String> = emptyList(),
     val includeUntagged: Boolean = true,

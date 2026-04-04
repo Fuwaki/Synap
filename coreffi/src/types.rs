@@ -1,7 +1,13 @@
 //! FFI-compatible type conversions for Synap.
 
-use synap_core::dto::NoteDTO as CoreNoteDto;
+use synap_core::dto::{
+    NoteDTO as CoreNoteDto,
+    TimelineNotesPageDTO as CoreTimelineNotesPageDto,
+    TimelineSessionDTO as CoreTimelineSessionDto,
+    TimelineSessionsPageDTO as CoreTimelineSessionsPageDto,
+};
 use synap_core::service::FilteredNoteStatus as CoreFilteredNoteStatus;
+use synap_core::service::TimelineDirection as CoreTimelineDirection;
 use synap_core::BuildInfo as CoreBuildInfo;
 
 /// A note DTO that is friendly to UniFFI/Kotlin consumers.
@@ -27,6 +33,55 @@ impl From<CoreNoteDto> for NoteDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimelineNotesPageDTO {
+    pub notes: Vec<NoteDTO>,
+    pub next_cursor: Option<String>,
+}
+
+impl From<CoreTimelineNotesPageDto> for TimelineNotesPageDTO {
+    fn from(page: CoreTimelineNotesPageDto) -> Self {
+        Self {
+            notes: page.notes.into_iter().map(Into::into).collect(),
+            next_cursor: page.next_cursor,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimelineSessionDTO {
+    pub started_at: i64,
+    pub ended_at: i64,
+    pub note_count: u32,
+    pub notes: Vec<NoteDTO>,
+}
+
+impl From<CoreTimelineSessionDto> for TimelineSessionDTO {
+    fn from(session: CoreTimelineSessionDto) -> Self {
+        Self {
+            started_at: session.started_at as i64,
+            ended_at: session.ended_at as i64,
+            note_count: session.note_count,
+            notes: session.notes.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimelineSessionsPageDTO {
+    pub sessions: Vec<TimelineSessionDTO>,
+    pub next_cursor: Option<String>,
+}
+
+impl From<CoreTimelineSessionsPageDto> for TimelineSessionsPageDTO {
+    fn from(page: CoreTimelineSessionsPageDto) -> Self {
+        Self {
+            sessions: page.sessions.into_iter().map(Into::into).collect(),
+            next_cursor: page.next_cursor,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildInfo {
     pub crate_version: String,
     pub git_branch: String,
@@ -43,12 +98,27 @@ pub enum FilteredNoteStatus {
     Deleted,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimelineDirection {
+    Older,
+    Newer,
+}
+
 impl From<FilteredNoteStatus> for CoreFilteredNoteStatus {
     fn from(status: FilteredNoteStatus) -> Self {
         match status {
             FilteredNoteStatus::All => CoreFilteredNoteStatus::All,
             FilteredNoteStatus::Normal => CoreFilteredNoteStatus::Normal,
             FilteredNoteStatus::Deleted => CoreFilteredNoteStatus::Deleted,
+        }
+    }
+}
+
+impl From<TimelineDirection> for CoreTimelineDirection {
+    fn from(direction: TimelineDirection) -> Self {
+        match direction {
+            TimelineDirection::Older => CoreTimelineDirection::Older,
+            TimelineDirection::Newer => CoreTimelineDirection::Newer,
         }
     }
 }

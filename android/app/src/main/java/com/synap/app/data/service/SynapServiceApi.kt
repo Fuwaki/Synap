@@ -1,7 +1,10 @@
 package com.synap.app.data.service
 
 import com.synap.app.data.model.NoteFeedFilter
+import com.synap.app.data.model.TimelineDirection
 import com.synap.app.data.model.NoteRecord
+import com.synap.app.data.model.TimelineSessionRecord
+import com.synap.app.data.portal.CursorPage
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -23,6 +26,17 @@ interface SynapServiceApi {
     suspend fun getReplies(parentId: String, cursor: String?, limit: UInt): Result<List<NoteRecord>>
 
     suspend fun getRecentNote(cursor: String?, limit: UInt?): Result<List<NoteRecord>>
+
+    suspend fun getRecentNotesPage(
+        cursor: String?,
+        direction: TimelineDirection,
+        limit: UInt?,
+    ): Result<CursorPage<NoteRecord>>
+
+    suspend fun getRecentSessionsPage(
+        cursor: String?,
+        limit: UInt?,
+    ): Result<CursorPage<TimelineSessionRecord>>
 
     suspend fun getOrigins(childId: String): Result<List<NoteRecord>>
 
@@ -47,6 +61,13 @@ interface SynapServiceApi {
         cursor: String?,
         limit: UInt?,
     ): Result<List<NoteRecord>>
+
+    suspend fun getFilteredNotesPage(
+        filter: NoteFeedFilter,
+        cursor: String?,
+        direction: TimelineDirection,
+        limit: UInt?,
+    ): Result<CursorPage<NoteRecord>>
 
     suspend fun createNote(content: String, tags: List<String>): Result<NoteRecord>
 

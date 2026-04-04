@@ -127,6 +127,7 @@ fun SynapNavGraph(
                     onOpenTrash = { navController.navigate("trash") },
                     onLoadMore = viewModel::loadMore,
                     onRefresh = viewModel::refresh,
+                    onSetFilterPanelOpen = viewModel::setFilterPanelOpen,
                     onToggleTagFilter = viewModel::toggleTag,
                     onToggleUntaggedFilter = viewModel::toggleUntagged,
                     onToggleAllTags = viewModel::toggleAllTags,

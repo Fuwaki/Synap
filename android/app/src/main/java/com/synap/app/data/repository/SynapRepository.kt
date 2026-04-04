@@ -3,6 +3,8 @@ package com.synap.app.data.repository
 import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.NoteRecord
 import com.synap.app.data.model.ReplyItem
+import com.synap.app.data.model.TimelineDirection
+import com.synap.app.data.model.TimelineSessionRecord
 import com.synap.app.data.portal.CursorPortal
 import com.synap.app.data.service.SynapServiceApi
 import javax.inject.Inject
@@ -27,6 +29,8 @@ interface SynapRepository {
     suspend fun shutdown()
 
     fun openRecentPortal(limit: UInt = 20u): CursorPortal<NoteRecord>
+
+    fun openRecentSessionsPortal(limit: UInt = 20u): CursorPortal<TimelineSessionRecord>
 
     fun openRepliesPortal(parentId: String, limit: UInt = 20u): CursorPortal<ReplyItem>
 
@@ -93,9 +97,23 @@ class SynapRepositoryImpl @Inject constructor(
         CursorPortal(
             limit = limit,
             fetchPage = { cursor, pageLimit ->
-                service.getRecentNote(cursor, pageLimit.takeIf { it > 0u }).unwrap()
+                service.getRecentNotesPage(
+                    cursor = cursor,
+                    direction = TimelineDirection.Older,
+                    limit = pageLimit.takeIf { it > 0u },
+                ).unwrap()
             },
-            cursorOf = NoteRecord::id,
+        )
+
+    override fun openRecentSessionsPortal(limit: UInt): CursorPortal<TimelineSessionRecord> =
+        CursorPortal(
+            limit = limit,
+            fetchPage = { cursor, pageLimit ->
+                service.getRecentSessionsPage(
+                    cursor = cursor,
+                    limit = pageLimit.takeIf { it > 0u },
+                ).unwrap()
+            },
         )
 
     override fun openRepliesPortal(parentId: String, limit: UInt): CursorPortal<ReplyItem> =
@@ -131,9 +149,13 @@ class SynapRepositoryImpl @Inject constructor(
         CursorPortal(
             limit = limit,
             fetchPage = { cursor, pageLimit ->
-                service.getFilteredNotes(filter, cursor, pageLimit.takeIf { it > 0u }).unwrap()
+                service.getFilteredNotesPage(
+                    filter = filter,
+                    cursor = cursor,
+                    direction = TimelineDirection.Older,
+                    limit = pageLimit.takeIf { it > 0u },
+                ).unwrap()
             },
-            cursorOf = NoteRecord::id,
         )
 
     override suspend fun getNote(idOrShortId: String): NoteRecord =

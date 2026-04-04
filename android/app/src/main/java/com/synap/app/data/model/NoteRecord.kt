@@ -1,6 +1,8 @@
 package com.synap.app.data.model
 
 import com.fuwaki.synap.bindings.uniffi.synap_coreffi.NoteDto
+import com.fuwaki.synap.bindings.uniffi.synap_coreffi.TimelineNotesPageDto
+import com.synap.app.data.portal.CursorPage
 
 data class NoteRecord(
     val id: String,
@@ -28,3 +30,8 @@ data class ReplyItem(
 internal fun NoteDto.toNoteRecord(): NoteRecord = NoteRecord.fromDto(this)
 
 internal fun List<NoteDto>.toNoteRecords(): List<NoteRecord> = map(NoteRecord::fromDto)
+
+internal fun TimelineNotesPageDto.toCursorPage(): CursorPage<NoteRecord> = CursorPage(
+    items = notes.toNoteRecords(),
+    nextCursor = nextCursor,
+)

@@ -3,7 +3,14 @@
 use std::sync::Arc;
 
 use crate::error::FfiError;
-use crate::types::{BuildInfo, FilteredNoteStatus, NoteDTO};
+use crate::types::{
+    BuildInfo,
+    FilteredNoteStatus,
+    NoteDTO,
+    TimelineDirection,
+    TimelineNotesPageDTO,
+    TimelineSessionsPageDTO,
+};
 use synap_core::dto::NoteDTO as CoreNoteDTO;
 use synap_core::service::SynapService as CoreSynapService;
 
@@ -23,6 +30,16 @@ impl SynapService {
 
     fn map_notes(notes: Vec<CoreNoteDTO>) -> Vec<NoteDTO> {
         notes.into_iter().map(Into::into).collect()
+    }
+
+    fn map_note_page(page: synap_core::dto::TimelineNotesPageDTO) -> TimelineNotesPageDTO {
+        page.into()
+    }
+
+    fn map_session_page(
+        page: synap_core::dto::TimelineSessionsPageDTO,
+    ) -> TimelineSessionsPageDTO {
+        page.into()
     }
 
     pub fn get_note(&self, id_or_short_id: String) -> Result<NoteDTO, FfiError> {
@@ -52,6 +69,33 @@ impl SynapService {
         self.inner
             .get_recent_note(cursor.as_deref(), limit.map(|value| value as usize))
             .map(Self::map_notes)
+            .map_err(Into::into)
+    }
+
+    pub fn get_recent_notes_page(
+        &self,
+        cursor: Option<String>,
+        direction: TimelineDirection,
+        limit: Option<u32>,
+    ) -> Result<TimelineNotesPageDTO, FfiError> {
+        self.inner
+            .get_recent_notes_page(
+                cursor.as_deref(),
+                direction.into(),
+                limit.map(|value| value as usize),
+            )
+            .map(Self::map_note_page)
+            .map_err(Into::into)
+    }
+
+    pub fn get_recent_sessions_page(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> Result<TimelineSessionsPageDTO, FfiError> {
+        self.inner
+            .get_recent_sessions(cursor.as_deref(), limit.map(|value| value as usize))
+            .map(Self::map_session_page)
             .map_err(Into::into)
     }
 
@@ -145,6 +189,30 @@ impl SynapService {
             .map_err(Into::into)
     }
 
+    pub fn get_filtered_notes_page(
+        &self,
+        selected_tags: Vec<String>,
+        include_untagged: bool,
+        tag_filter_enabled: bool,
+        status: FilteredNoteStatus,
+        cursor: Option<String>,
+        direction: TimelineDirection,
+        limit: Option<u32>,
+    ) -> Result<TimelineNotesPageDTO, FfiError> {
+        self.inner
+            .get_filtered_notes_page(
+                selected_tags,
+                include_untagged,
+                tag_filter_enabled,
+                status.into(),
+                cursor.as_deref(),
+                direction.into(),
+                limit.map(|value| value as usize),
+            )
+            .map(Self::map_note_page)
+            .map_err(Into::into)
+    }
+
     pub fn create_note(&self, content: String, tags: Vec<String>) -> Result<NoteDTO, FfiError> {
         self.inner
             .create_note(content, tags)
@@ -214,6 +282,54 @@ mod tests {
         let service = open_memory().unwrap();
         let notes = service.get_recent_note(None, None).unwrap();
         assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn test_recent_note_page_is_exposed() {
+        let service = open_memory().unwrap();
+        let first = service.create_note("first".to_string(), vec![]).unwrap();
+        let second = service.create_note("second".to_string(), vec![]).unwrap();
+        let third = service.create_note("third".to_string(), vec![]).unwrap();
+
+        let page_one = service
+            .get_recent_notes_page(None, TimelineDirection::Older, Some(2))
+            .unwrap();
+        assert_eq!(page_one.notes.len(), 2);
+        assert_eq!(page_one.notes[0].id, third.id);
+        assert_eq!(page_one.notes[1].id, second.id);
+        assert_eq!(page_one.next_cursor.as_deref(), Some(second.id.as_str()));
+
+        let page_two = service
+            .get_recent_notes_page(
+                page_one.next_cursor.clone(),
+                TimelineDirection::Older,
+                Some(2),
+            )
+            .unwrap();
+        assert_eq!(page_two.notes.len(), 1);
+        assert_eq!(page_two.notes[0].id, first.id);
+        assert!(page_two.next_cursor.is_none());
+    }
+
+    #[test]
+    fn test_recent_sessions_page_is_exposed() {
+        let service = open_memory().unwrap();
+        let first = service.create_note("first".to_string(), vec![]).unwrap();
+        let second = service.create_note("second".to_string(), vec![]).unwrap();
+        let third = service.create_note("third".to_string(), vec![]).unwrap();
+
+        let page = service.get_recent_sessions_page(None, Some(10)).unwrap();
+        assert!(page.next_cursor.is_none());
+        assert_eq!(page.sessions.len(), 1);
+        assert_eq!(page.sessions[0].note_count, 3);
+        assert_eq!(
+            page.sessions[0]
+                .notes
+                .iter()
+                .map(|note| note.id.clone())
+                .collect::<Vec<_>>(),
+            vec![third.id, second.id, first.id]
+        );
     }
 
     #[test]

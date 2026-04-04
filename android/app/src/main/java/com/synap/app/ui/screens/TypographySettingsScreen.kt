@@ -153,21 +153,28 @@ fun TypographySettingsScreen(
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(16.dp)
             ) {
+                // --- 修改了这里的 Row 布局 ---
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = stringResource(R.string.current_font_weight, currentFontWeight),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp) // 给左侧文字分配剩余空间，允许换行，并留出右侧间距
                     )
                     TextButton(
                         onClick = { onFontWeightChange(400) },
                         enabled = currentFontWeight != 400
                     ) {
-                        Text(stringResource(R.string.restore_default))
+                        Text(
+                            text = stringResource(R.string.restore_default),
+                            maxLines = 1,
+                            softWrap = false // 强制右侧按钮文字在一行显示
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -200,21 +207,28 @@ fun TypographySettingsScreen(
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(16.dp)
             ) {
+                // --- 修改了这里的 Row 布局 ---
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = stringResource(R.string.current_font_size, noteTextSize.toInt()),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp) // 同理，给左侧文字分配剩余空间
                     )
                     TextButton(
                         onClick = { onNoteTextSizeChange(16f) },
                         enabled = noteTextSize != 16f
                     ) {
-                        Text(stringResource(R.string.restore_default))
+                        Text(
+                            text = stringResource(R.string.restore_default),
+                            maxLines = 1,
+                            softWrap = false // 强制右侧按钮文字在一行显示
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))

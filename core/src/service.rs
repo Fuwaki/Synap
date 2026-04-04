@@ -21,6 +21,13 @@ pub struct SynapService {
     note_searcher: FuzzyIndex<Note>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilteredNoteStatus {
+    All,
+    Normal,
+    Deleted,
+}
+
 impl SynapService {
     /// 封装只读事务的生命周期
     pub(crate) fn with_read<F, T>(&self, f: F) -> Result<T, ServiceError>
@@ -130,6 +137,14 @@ impl SynapService {
         Ok(res)
     }
 
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, ServiceError> {
+        Self::new(Some(path.as_ref().to_string_lossy().into_owned()))
+    }
+
+    pub fn open_memory() -> Result<Self, ServiceError> {
+        Self::new(None)
+    }
+
     fn init_search(&self) -> Result<(), ServiceError> {
         self.note_searcher.clear();
         self.tag_searcher.clear();
@@ -237,6 +252,20 @@ impl SynapService {
         Ok(!reader
             .has_next_version(&note_ref.get_id())
             .map_err(redb::Error::from)?)
+    }
+
+    fn matches_selected_tags(
+        note: &Note,
+        selected_tag_ids: &HashSet<Uuid>,
+        include_untagged: bool,
+    ) -> bool {
+        if note.tags().is_empty() {
+            return include_untagged;
+        }
+
+        note.tags()
+            .iter()
+            .any(|tag_id| selected_tag_ids.contains(tag_id))
     }
 
     /// 获取单条笔记的完整视图
@@ -467,16 +496,203 @@ impl SynapService {
         })
     }
 
-    pub fn get_notes_by_tag(&self, tag: &str) -> Result<Vec<NoteDTO>, ServiceError> {
+    pub fn get_all_tags(&self) -> Result<Vec<String>, ServiceError> {
+        self.with_read(|tx, _reader| {
+            let tag_reader = TagReader::new(tx)?;
+            let mut tags = tag_reader
+                .all()
+                .map_err(redb::Error::from)?
+                .map(|tag| tag.map(|tag| tag.get_content().to_string()))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(redb::Error::from)?;
+
+            tags.sort();
+            Ok(tags)
+        })
+    }
+
+    /// tag-centric 的便捷查询。
+    ///
+    /// 它复用的是 `tag -> note` 关系，因此更适合标签页、标签搜索结果等
+    /// “从标签出发”的场景；如果需求是首页/时间流那种“全局时间轴 + 游标”
+    /// 过滤，请走 `get_filtered_notes`，不要和这里混用。
+    pub fn get_notes_by_tag(
+        &self,
+        tag: &str,
+        cursor: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<NoteDTO>, ServiceError> {
         self.with_read(|tx, reader| {
+            let limit = limit.unwrap_or(20);
+            let cursor_uuid = cursor.map(Self::parse_id).transpose()?;
             let Some(tag) = Self::resolve_tag(tx, tag)? else {
                 return Ok(Vec::new());
             };
 
-            reader
-                .latest_notes_with_tag(&tag)?
-                .map(|note| self.note_to_dto(note?, reader))
-                .collect()
+            let tagged_iter = reader.latest_notes_with_tag(&tag)?;
+            let mut cursor_seen = cursor_uuid.is_none();
+            let mut notes = Vec::with_capacity(limit);
+
+            for note in tagged_iter {
+                let note = note?;
+
+                if !cursor_seen {
+                    if cursor_uuid
+                        .as_ref()
+                        .is_some_and(|target_id| note.get_id() == *target_id)
+                    {
+                        cursor_seen = true;
+                    }
+                    continue;
+                }
+
+                notes.push(self.note_to_dto(note, reader)?);
+                if notes.len() == limit {
+                    break;
+                }
+            }
+
+            Ok(notes)
+        })
+    }
+
+    /// 时间轴过滤的唯一入口。
+    ///
+    /// 这里故意不复用 `tag -> note` 的索引来做首页/时间流筛选：
+    /// 那套索引是 tag-centric 的，适合标签搜索或标签页，不适合维持一个
+    /// “全局按时间排序”的惰性游标。只要查询里混入多标签、无标签、已删除/
+    /// 未删除组合，就必须回到时间轴本身来扫描。
+    ///
+    /// 实现上会先沿时间轴遍历轻量的 `NoteRef`，先完成：
+    /// 1. 状态过滤（正常/已删除/全部）
+    /// 2. 游标跳过
+    /// 3. 最新版本判断
+    ///
+    /// 只有当查询真的需要检查 tag，或者准备返回 DTO 时，才把 `NoteRef`
+    /// 水化成完整的 `Note`，避免误以为这里维护了第二套“标签时间流”。
+    pub fn get_filtered_notes(
+        &self,
+        selected_tags: Vec<String>,
+        include_untagged: bool,
+        tag_filter_enabled: bool,
+        status: FilteredNoteStatus,
+        cursor: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<NoteDTO>, ServiceError> {
+        let limit = limit.unwrap_or(20);
+
+        if !tag_filter_enabled {
+            return match status {
+                FilteredNoteStatus::Normal => self.get_recent_note(cursor, Some(limit)),
+                FilteredNoteStatus::Deleted => self.get_deleted_notes(cursor, Some(limit)),
+                FilteredNoteStatus::All => self.with_read(|_tx, reader| {
+                    let cursor_uuid = cursor.map(Self::parse_id).transpose()?;
+                    let mut cursor_seen = cursor_uuid.is_none();
+                    let mut notes = Vec::with_capacity(limit);
+
+                    for note_id in reader.note_by_time().map_err(redb::Error::from)?.rev() {
+                        let note_id = note_id.map_err(redb::Error::from)?;
+                        let note_ref =
+                            Self::require_note_ref(reader, note_id, &note_id.to_string())?;
+
+                        if !Self::is_latest_version(reader, note_ref)? {
+                            continue;
+                        }
+
+                        if !cursor_seen {
+                            if cursor_uuid
+                                .as_ref()
+                                .is_some_and(|target_id| note_ref.get_id() == *target_id)
+                            {
+                                cursor_seen = true;
+                            }
+                            continue;
+                        }
+
+                        notes.push(self.note_ref_to_dto(note_ref, reader)?);
+                        if notes.len() == limit {
+                            break;
+                        }
+                    }
+
+                    Ok(notes)
+                }),
+            };
+        }
+
+        let selected_tag_ids = Self::normalize_tag_inputs(selected_tags)
+            .into_iter()
+            .filter_map(|tag| Tag::id_for_content(&tag))
+            .collect::<HashSet<_>>();
+
+        if selected_tag_ids.is_empty() && !include_untagged {
+            return Ok(Vec::new());
+        }
+
+        self.with_read(|_tx, reader| {
+            let cursor_uuid = cursor.map(Self::parse_id).transpose()?;
+            let mut cursor_seen = cursor_uuid.is_none();
+            let mut notes = Vec::with_capacity(limit);
+
+            let mut maybe_push = |note_ref: NoteRef| -> Result<bool, ServiceError> {
+                if !Self::is_latest_version(reader, note_ref)? {
+                    return Ok(false);
+                }
+
+                if !cursor_seen {
+                    if cursor_uuid
+                        .as_ref()
+                        .is_some_and(|target_id| note_ref.get_id() == *target_id)
+                    {
+                        cursor_seen = true;
+                    }
+                    return Ok(false);
+                }
+
+                let note = note_ref
+                    .hydrate(reader)?
+                    .ok_or(ServiceError::NotFound(note_ref.get_id().to_string()))?;
+
+                if !Self::matches_selected_tags(&note, &selected_tag_ids, include_untagged) {
+                    return Ok(false);
+                }
+
+                notes.push(self.note_to_dto(note, reader)?);
+                Ok(notes.len() == limit)
+            };
+
+            match status {
+                FilteredNoteStatus::Normal => {
+                    let timeline = TimelineView::new(reader);
+                    for note_ref in timeline.recent_refs()? {
+                        if maybe_push(note_ref.map_err(ServiceError::from)?)? {
+                            break;
+                        }
+                    }
+                }
+                FilteredNoteStatus::Deleted => {
+                    for note_id in reader.deleted_note_ids().map_err(redb::Error::from)?.rev() {
+                        let note_id = note_id.map_err(redb::Error::from)?;
+                        let note_ref =
+                            Self::require_note_ref(reader, note_id, &note_id.to_string())?;
+                        if maybe_push(note_ref)? {
+                            break;
+                        }
+                    }
+                }
+                FilteredNoteStatus::All => {
+                    for note_id in reader.note_by_time().map_err(redb::Error::from)?.rev() {
+                        let note_id = note_id.map_err(redb::Error::from)?;
+                        let note_ref =
+                            Self::require_note_ref(reader, note_id, &note_id.to_string())?;
+                        if maybe_push(note_ref)? {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            Ok(notes)
         })
     }
 
@@ -604,6 +820,35 @@ mod tests {
     }
 
     #[test]
+    fn test_get_all_tags_returns_sorted_contents() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("synap.redb");
+        let service = SynapService::new(Some(db_path.to_string_lossy().into_owned())).unwrap();
+
+        service
+            .create_note(
+                "tagged".to_string(),
+                vec![
+                    " rust ".into(),
+                    "async".into(),
+                    "python".into(),
+                    "rust".into(),
+                ],
+            )
+            .unwrap();
+
+        let tags = service.get_all_tags().unwrap();
+        assert_eq!(
+            tags,
+            vec![
+                "async".to_string(),
+                "python".to_string(),
+                "rust".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn test_get_notes_by_tag_returns_only_live_latest_matches() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("synap.redb");
@@ -625,11 +870,146 @@ mod tests {
             .create_note("keep rust".to_string(), vec!["rust".into()])
             .unwrap();
 
-        let rust_notes = service.get_notes_by_tag(" rust ").unwrap();
+        let rust_notes = service.get_notes_by_tag(" rust ", None, None).unwrap();
         assert_eq!(rust_notes.len(), 1);
         assert_eq!(rust_notes[0].id, live.id);
 
-        assert!(service.get_notes_by_tag("missing").unwrap().is_empty());
+        assert!(service
+            .get_notes_by_tag("missing", None, None)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_get_notes_by_tag_uses_cursor_pagination() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("synap.redb");
+        let service = SynapService::new(Some(db_path.to_string_lossy().into_owned())).unwrap();
+
+        let first = service
+            .create_note("rust first".to_string(), vec!["rust".into()])
+            .unwrap();
+        let second = service
+            .create_note("rust second".to_string(), vec!["rust".into()])
+            .unwrap();
+        let third = service
+            .create_note("rust third".to_string(), vec!["rust".into()])
+            .unwrap();
+
+        let page_one = service.get_notes_by_tag("rust", None, Some(2)).unwrap();
+        assert_eq!(page_one.len(), 2);
+        assert_eq!(page_one[0].id, first.id);
+        assert_eq!(page_one[1].id, second.id);
+
+        let page_two = service
+            .get_notes_by_tag("rust", Some(&page_one[1].id), Some(2))
+            .unwrap();
+        assert_eq!(page_two.len(), 1);
+        assert_eq!(page_two[0].id, third.id);
+    }
+
+    #[test]
+    fn test_get_filtered_notes_keeps_global_time_order() {
+        let service = SynapService::new(None).unwrap();
+
+        let first = service.create_note("first".to_string(), vec![]).unwrap();
+        let second = service.create_note("second".to_string(), vec![]).unwrap();
+        let third = service.create_note("third".to_string(), vec![]).unwrap();
+        let fourth = service.create_note("fourth".to_string(), vec![]).unwrap();
+
+        service.delete_note(&second.id).unwrap();
+        service.delete_note(&fourth.id).unwrap();
+
+        let filtered = service
+            .get_filtered_notes(vec![], true, false, FilteredNoteStatus::All, None, Some(10))
+            .unwrap();
+
+        assert_eq!(
+            filtered
+                .iter()
+                .map(|note| note.id.clone())
+                .collect::<Vec<_>>(),
+            vec![fourth.id, third.id, second.id, first.id]
+        );
+    }
+
+    #[test]
+    fn test_get_filtered_notes_supports_mixed_tags_and_untagged() {
+        let service = SynapService::new(None).unwrap();
+
+        let rust = service
+            .create_note("rust".to_string(), vec!["rust".into()])
+            .unwrap();
+        let untagged = service.create_note("untagged".to_string(), vec![]).unwrap();
+        let travel = service
+            .create_note("travel".to_string(), vec!["travel".into()])
+            .unwrap();
+        let rust_work = service
+            .create_note("rust work".to_string(), vec!["rust".into(), "work".into()])
+            .unwrap();
+
+        let filtered = service
+            .get_filtered_notes(
+                vec!["rust".into(), "travel".into()],
+                true,
+                true,
+                FilteredNoteStatus::Normal,
+                None,
+                Some(10),
+            )
+            .unwrap();
+
+        assert_eq!(
+            filtered
+                .iter()
+                .map(|note| note.id.clone())
+                .collect::<Vec<_>>(),
+            vec![rust_work.id, travel.id, untagged.id, rust.id]
+        );
+    }
+
+    #[test]
+    fn test_get_filtered_notes_uses_cursor_after_filtering() {
+        let service = SynapService::new(None).unwrap();
+
+        let rust = service
+            .create_note("rust".to_string(), vec!["rust".into()])
+            .unwrap();
+        let untagged = service.create_note("untagged".to_string(), vec![]).unwrap();
+        let travel = service
+            .create_note("travel".to_string(), vec!["travel".into()])
+            .unwrap();
+        let rust_work = service
+            .create_note("rust work".to_string(), vec!["rust".into(), "work".into()])
+            .unwrap();
+
+        let page_one = service
+            .get_filtered_notes(
+                vec!["rust".into(), "travel".into()],
+                true,
+                true,
+                FilteredNoteStatus::Normal,
+                None,
+                Some(2),
+            )
+            .unwrap();
+        assert_eq!(page_one.len(), 2);
+        assert_eq!(page_one[0].id, rust_work.id);
+        assert_eq!(page_one[1].id, travel.id);
+
+        let page_two = service
+            .get_filtered_notes(
+                vec!["rust".into(), "travel".into()],
+                true,
+                true,
+                FilteredNoteStatus::Normal,
+                Some(&page_one[1].id),
+                Some(2),
+            )
+            .unwrap();
+        assert_eq!(page_two.len(), 2);
+        assert_eq!(page_two[0].id, untagged.id);
+        assert_eq!(page_two[1].id, rust.id);
     }
 
     #[test]

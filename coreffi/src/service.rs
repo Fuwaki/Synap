@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::error::FfiError;
-use crate::types::{BuildInfo, NoteDTO};
+use crate::types::{BuildInfo, FilteredNoteStatus, NoteDTO};
 use synap_core::dto::NoteDTO as CoreNoteDTO;
 use synap_core::service::SynapService as CoreSynapService;
 
@@ -104,6 +104,44 @@ impl SynapService {
     pub fn search_tags(&self, query: String, limit: u32) -> Result<Vec<String>, FfiError> {
         self.inner
             .search_tags(&query, limit as usize)
+            .map_err(Into::into)
+    }
+
+    pub fn get_all_tags(&self) -> Result<Vec<String>, FfiError> {
+        self.inner.get_all_tags().map_err(Into::into)
+    }
+
+    pub fn get_notes_by_tag(
+        &self,
+        tag: String,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> Result<Vec<NoteDTO>, FfiError> {
+        self.inner
+            .get_notes_by_tag(&tag, cursor.as_deref(), limit.map(|value| value as usize))
+            .map(Self::map_notes)
+            .map_err(Into::into)
+    }
+
+    pub fn get_filtered_notes(
+        &self,
+        selected_tags: Vec<String>,
+        include_untagged: bool,
+        tag_filter_enabled: bool,
+        status: FilteredNoteStatus,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> Result<Vec<NoteDTO>, FfiError> {
+        self.inner
+            .get_filtered_notes(
+                selected_tags,
+                include_untagged,
+                tag_filter_enabled,
+                status.into(),
+                cursor.as_deref(),
+                limit.map(|value| value as usize),
+            )
+            .map(Self::map_notes)
             .map_err(Into::into)
     }
 
@@ -269,6 +307,103 @@ mod tests {
 
         let restored = service.get_note(second.id).unwrap();
         assert_eq!(restored.content, "Second");
+    }
+
+    #[test]
+    fn test_tag_queries_are_exposed() {
+        let service = open_memory().unwrap();
+
+        let first = service
+            .create_note(
+                "learn rust".to_string(),
+                vec![
+                    " rust ".to_string(),
+                    "async".to_string(),
+                    "rust".to_string(),
+                ],
+            )
+            .unwrap();
+        let second = service
+            .create_note("ship rust".to_string(), vec!["rust".to_string()])
+            .unwrap();
+        let third = service
+            .create_note("travel".to_string(), vec!["travel".to_string()])
+            .unwrap();
+
+        let tags = service.get_all_tags().unwrap();
+        assert_eq!(
+            tags,
+            vec![
+                "async".to_string(),
+                "rust".to_string(),
+                "travel".to_string(),
+            ]
+        );
+
+        let page_one = service
+            .get_notes_by_tag("rust".to_string(), None, Some(1))
+            .unwrap();
+        assert_eq!(page_one.len(), 1);
+        assert_eq!(page_one[0].id, first.id);
+
+        let page_two = service
+            .get_notes_by_tag("rust".to_string(), Some(page_one[0].id.clone()), Some(10))
+            .unwrap();
+        assert_eq!(page_two.len(), 1);
+        assert_eq!(page_two[0].id, second.id);
+
+        let missing = service
+            .get_notes_by_tag("missing".to_string(), None, None)
+            .unwrap();
+        assert!(missing.is_empty());
+
+        let travel_notes = service
+            .get_notes_by_tag("travel".to_string(), None, None)
+            .unwrap();
+        assert_eq!(travel_notes.len(), 1);
+        assert_eq!(travel_notes[0].id, third.id);
+    }
+
+    #[test]
+    fn test_filtered_notes_are_exposed() {
+        let service = open_memory().unwrap();
+
+        let rust = service
+            .create_note("rust".to_string(), vec!["rust".to_string()])
+            .unwrap();
+        let untagged = service.create_note("untagged".to_string(), vec![]).unwrap();
+        let deleted = service
+            .create_note("deleted rust".to_string(), vec!["rust".to_string()])
+            .unwrap();
+        service.delete_note(deleted.id.clone()).unwrap();
+
+        let normal = service
+            .get_filtered_notes(
+                vec!["rust".to_string()],
+                true,
+                true,
+                FilteredNoteStatus::Normal,
+                None,
+                Some(10),
+            )
+            .unwrap();
+        assert_eq!(normal.len(), 2);
+        assert_eq!(normal[0].id, untagged.id);
+        assert_eq!(normal[1].id, rust.id);
+
+        let all = service
+            .get_filtered_notes(
+                vec!["rust".to_string()],
+                false,
+                true,
+                FilteredNoteStatus::All,
+                None,
+                Some(10),
+            )
+            .unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].id, deleted.id);
+        assert_eq!(all[1].id, rust.id);
     }
 
     #[test]

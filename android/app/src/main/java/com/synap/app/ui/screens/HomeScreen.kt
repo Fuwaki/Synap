@@ -39,9 +39,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -53,7 +53,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -80,7 +79,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -163,15 +161,15 @@ fun HomeScreen(
     onReplyToNote: (String, String) -> Unit,
     onToggleDeleted: (Note) -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenTrash: () -> Unit,
     onLoadMore: () -> Unit,
     onRefresh: () -> Unit,
+    onToggleTagFilter: (String) -> Unit,
+    onToggleUntaggedFilter: () -> Unit,
+    onToggleAllTags: () -> Unit,
 ) {
-    val context = LocalContext.current
     val gridState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
-
-    var showFilterSheet by remember { mutableStateOf(false) }
-    var currentFilter by rememberSaveable { mutableStateOf("全部") }
 
     var deletedNoteToUndo by remember { mutableStateOf<Note?>(null) }
     var undoProgress by remember { mutableFloatStateOf(1f) }
@@ -258,38 +256,18 @@ fun HomeScreen(
         }
     }
 
-    var unselectedTags by rememberSaveable { mutableStateOf(emptySet<String>()) }
-    var isUntaggedUnselected by rememberSaveable { mutableStateOf(false) }
     var isTagsExpanded by rememberSaveable { mutableStateOf(false) }
 
-    val statusFilteredNotes = remember(uiState.notes, currentFilter, pendingDeleteNoteIds) {
-        val uniqueNotes = uiState.notes.distinctBy { it.id }
-        val visibleNotes = uniqueNotes.filter { it.id !in pendingDeleteNoteIds }
-
-        val sorted = visibleNotes.sortedBy { it.isDeleted }
-        when (currentFilter) {
-            "正常" -> sorted.filter { !it.isDeleted }
-            "已删除" -> sorted.filter { it.isDeleted }
-            else -> sorted
-        }
+    val displayNotes = remember(uiState.notes, pendingDeleteNoteIds) {
+        uiState.notes
+            .distinctBy { it.id }
+            .filter { it.id !in pendingDeleteNoteIds }
     }
 
-    val allTags = remember(statusFilteredNotes) {
-        statusFilteredNotes.flatMap { it.tags }.distinct().sorted()
-    }
+    val allTags = uiState.availableTags
 
-    val isAllSelected = remember(allTags, unselectedTags, isUntaggedUnselected) {
-        allTags.none { it in unselectedTags } && !isUntaggedUnselected
-    }
-
-    val displayNotes = remember(statusFilteredNotes, unselectedTags, isUntaggedUnselected) {
-        statusFilteredNotes.filter { note ->
-            if (note.tags.isEmpty()) {
-                !isUntaggedUnselected
-            } else {
-                note.tags.any { it !in unselectedTags }
-            }
-        }
+    val isAllSelected = remember(allTags, uiState.unselectedTags, uiState.isUntaggedUnselected) {
+        uiState.unselectedTags.isEmpty() && !uiState.isUntaggedUnselected
     }
 
     LaunchedEffect(gridState, uiState.hasMore, uiState.isLoading, uiState.isSearchMode) {
@@ -358,8 +336,8 @@ fun HomeScreen(
                             }
                         }
 
-                        IconButton(onClick = { showFilterSheet = true }) {
-                            Icon(Icons.Filled.FilterList, contentDescription = "筛选")
+                        IconButton(onClick = onOpenTrash) {
+                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.trash_title))
                         }
 
                         IconButton(onClick = onOpenSettings) {
@@ -446,7 +424,10 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 AnimatedVisibility(
-                    visible = allTags.isNotEmpty() || statusFilteredNotes.any { it.tags.isEmpty() },
+                    visible = allTags.isNotEmpty() ||
+                        uiState.unselectedTags.isNotEmpty() ||
+                        uiState.isUntaggedUnselected ||
+                        uiState.notes.any { it.tags.isEmpty() },
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
@@ -467,24 +448,16 @@ fun HomeScreen(
                                     FilterChip(
                                         selected = isAllSelected,
                                         onClick = {
-                                            if (isAllSelected) {
-                                                unselectedTags = allTags.toSet()
-                                                isUntaggedUnselected = true
-                                            } else {
-                                                unselectedTags = emptySet()
-                                                isUntaggedUnselected = false
-                                            }
+                                            onToggleAllTags()
                                         },
                                         label = { Text(stringResource(R.string.home_tagbar_all)) }
                                     )
 
-                                    if (statusFilteredNotes.any { it.tags.isEmpty() }) {
-                                        FilterChip(
-                                            selected = !isUntaggedUnselected,
-                                            onClick = { isUntaggedUnselected = !isUntaggedUnselected },
-                                            label = { Text(stringResource(R.string.home_tagbar_none)) }
-                                        )
-                                    }
+                                    FilterChip(
+                                        selected = !uiState.isUntaggedUnselected,
+                                        onClick = onToggleUntaggedFilter,
+                                        label = { Text(stringResource(R.string.home_tagbar_none)) }
+                                    )
 
                                     if (allTags.isNotEmpty()) {
                                         Box(
@@ -499,16 +472,10 @@ fun HomeScreen(
                                     }
 
                                     allTags.forEach { tag ->
-                                        val isSelected = tag !in unselectedTags
+                                        val isSelected = tag !in uiState.unselectedTags
                                         FilterChip(
                                             selected = isSelected,
-                                            onClick = {
-                                                unselectedTags = if (isSelected) {
-                                                    unselectedTags + tag
-                                                } else {
-                                                    unselectedTags - tag
-                                                }
-                                            },
+                                            onClick = { onToggleTagFilter(tag) },
                                             label = { Text(tag) }
                                         )
                                     }
@@ -524,24 +491,16 @@ fun HomeScreen(
                                     FilterChip(
                                         selected = isAllSelected,
                                         onClick = {
-                                            if (isAllSelected) {
-                                                unselectedTags = allTags.toSet()
-                                                isUntaggedUnselected = true
-                                            } else {
-                                                unselectedTags = emptySet()
-                                                isUntaggedUnselected = false
-                                            }
+                                            onToggleAllTags()
                                         },
                                         label = { Text(stringResource(R.string.home_tagbar_all)) }
                                     )
 
-                                    if (statusFilteredNotes.any { it.tags.isEmpty() }) {
-                                        FilterChip(
-                                            selected = !isUntaggedUnselected,
-                                            onClick = { isUntaggedUnselected = !isUntaggedUnselected },
-                                            label = { Text(stringResource(R.string.home_tagbar_none)) }
-                                        )
-                                    }
+                                    FilterChip(
+                                        selected = !uiState.isUntaggedUnselected,
+                                        onClick = onToggleUntaggedFilter,
+                                        label = { Text(stringResource(R.string.home_tagbar_none)) }
+                                    )
 
                                     if (allTags.isNotEmpty()) {
                                         Box(
@@ -556,16 +515,10 @@ fun HomeScreen(
                                     }
 
                                     allTags.forEach { tag ->
-                                        val isSelected = tag !in unselectedTags
+                                        val isSelected = tag !in uiState.unselectedTags
                                         FilterChip(
                                             selected = isSelected,
-                                            onClick = {
-                                                unselectedTags = if (isSelected) {
-                                                    unselectedTags + tag
-                                                } else {
-                                                    unselectedTags - tag
-                                                }
-                                            },
+                                            onClick = { onToggleTagFilter(tag) },
                                             label = { Text(tag) }
                                         )
                                     }
@@ -737,53 +690,6 @@ fun HomeScreen(
         }
     }
 
-    if (showFilterSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showFilterSheet = false }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 48.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.home_filter_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    FilterChip(
-                        selected = currentFilter == "全部",
-                        onClick = {
-                            currentFilter = "全部"
-                            showFilterSheet = false
-                        },
-                        label = { Text(stringResource(R.string.home_filter_delete_all)) }
-                    )
-                    FilterChip(
-                        selected = currentFilter == "正常",
-                        onClick = {
-                            currentFilter = "正常"
-                            showFilterSheet = false
-                        },
-                        label = { Text(stringResource(R.string.home_filter_delete_undelete)) }
-                    )
-                    FilterChip(
-                        selected = currentFilter == "已删除",
-                        onClick = {
-                            currentFilter = "已删除"
-                            showFilterSheet = false
-                        },
-                        label = { Text(stringResource(R.string.home_filter_delete_delete)) }
-                    )
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -869,8 +775,12 @@ private fun HomeScreenPreview() {
             onReplyToNote = { _, _ -> },
             onToggleDeleted = {},
             onOpenSearch = {},
+            onOpenTrash = {},
             onLoadMore = {},
             onRefresh = {},
+            onToggleTagFilter = {},
+            onToggleUntaggedFilter = {},
+            onToggleAllTags = {},
         )
     }
 }
@@ -887,8 +797,12 @@ private fun HomeScreenEmptyPreview() {
             onReplyToNote = { _, _ -> },
             onToggleDeleted = {},
             onOpenSearch = {},
+            onOpenTrash = {},
             onLoadMore = {},
             onRefresh = {},
+            onToggleTagFilter = {},
+            onToggleUntaggedFilter = {},
+            onToggleAllTags = {},
         )
     }
 }
@@ -905,8 +819,12 @@ private fun HomeScreenLoadingPreview() {
             onReplyToNote = { _, _ -> },
             onToggleDeleted = {},
             onOpenSearch = {},
+            onOpenTrash = {},
             onLoadMore = {},
             onRefresh = {},
+            onToggleTagFilter = {},
+            onToggleUntaggedFilter = {},
+            onToggleAllTags = {},
         )
     }
 }

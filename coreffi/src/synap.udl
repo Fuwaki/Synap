@@ -13,11 +13,18 @@ enum FfiError {
     "Other",
 };
 
+enum FilteredNoteStatus {
+    "All",
+    "Normal",
+    "Deleted",
+};
+
 dictionary NoteDTO {
     string id;
     string content;
     sequence<string> tags;
     i64 created_at;
+    boolean deleted;
 };
 
 dictionary BuildInfo {
@@ -40,6 +47,16 @@ interface SynapService {
     [Throws=FfiError] sequence<NoteDTO> get_deleted_notes(string? cursor, u32? limit);
     [Throws=FfiError] sequence<NoteDTO> search(string query, u32 limit);
     [Throws=FfiError] sequence<string> search_tags(string query, u32 limit);
+    [Throws=FfiError] sequence<string> get_all_tags();
+    [Throws=FfiError] sequence<NoteDTO> get_notes_by_tag(string tag, string? cursor, u32? limit);
+    [Throws=FfiError] sequence<NoteDTO> get_filtered_notes(
+        sequence<string> selected_tags,
+        boolean include_untagged,
+        boolean tag_filter_enabled,
+        FilteredNoteStatus status,
+        string? cursor,
+        u32? limit
+    );
     [Throws=FfiError] NoteDTO create_note(string content, sequence<string> tags);
     [Throws=FfiError] NoteDTO reply_note(string parent_id, string content, sequence<string> tags);
     [Throws=FfiError] NoteDTO edit_note(string target_id, string new_content, sequence<string> tags);

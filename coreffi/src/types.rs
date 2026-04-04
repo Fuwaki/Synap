@@ -1,6 +1,7 @@
 //! FFI-compatible type conversions for Synap.
 
 use synap_core::dto::NoteDTO as CoreNoteDto;
+use synap_core::service::FilteredNoteStatus as CoreFilteredNoteStatus;
 use synap_core::BuildInfo as CoreBuildInfo;
 
 /// A note DTO that is friendly to UniFFI/Kotlin consumers.
@@ -10,6 +11,7 @@ pub struct NoteDTO {
     pub content: String,
     pub tags: Vec<String>,
     pub created_at: i64,
+    pub deleted: bool,
 }
 
 impl From<CoreNoteDto> for NoteDTO {
@@ -19,6 +21,7 @@ impl From<CoreNoteDto> for NoteDTO {
             content: note.content,
             tags: note.tags,
             created_at: note.created_at as i64,
+            deleted: note.deleted,
         }
     }
 }
@@ -31,6 +34,23 @@ pub struct BuildInfo {
     pub git_short_commit: String,
     pub git_tag: Option<String>,
     pub display_version: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilteredNoteStatus {
+    All,
+    Normal,
+    Deleted,
+}
+
+impl From<FilteredNoteStatus> for CoreFilteredNoteStatus {
+    fn from(status: FilteredNoteStatus) -> Self {
+        match status {
+            FilteredNoteStatus::All => CoreFilteredNoteStatus::All,
+            FilteredNoteStatus::Normal => CoreFilteredNoteStatus::Normal,
+            FilteredNoteStatus::Deleted => CoreFilteredNoteStatus::Deleted,
+        }
+    }
 }
 
 impl From<CoreBuildInfo> for BuildInfo {
@@ -58,6 +78,7 @@ mod tests {
             content: "Test content".to_string(),
             tags: vec!["rust".to_string(), "android".to_string()],
             created_at: 1_742_165_200_000,
+            deleted: false,
         };
 
         let ffi_note: NoteDTO = core_note.into();
@@ -65,6 +86,7 @@ mod tests {
         assert_eq!(ffi_note.content, "Test content");
         assert_eq!(ffi_note.tags, vec!["rust", "android"]);
         assert_eq!(ffi_note.created_at, 1_742_165_200_000);
+        assert!(!ffi_note.deleted);
     }
 
     #[test]
@@ -84,5 +106,21 @@ mod tests {
         assert_eq!(ffi_info.git_short_commit, "abcdef012345");
         assert_eq!(ffi_info.git_tag.as_deref(), Some("v0.1.0"));
         assert_eq!(ffi_info.display_version, "v0.1.0 (abcdef012345)");
+    }
+
+    #[test]
+    fn test_filtered_note_status_conversion() {
+        assert_eq!(
+            CoreFilteredNoteStatus::from(FilteredNoteStatus::All),
+            CoreFilteredNoteStatus::All
+        );
+        assert_eq!(
+            CoreFilteredNoteStatus::from(FilteredNoteStatus::Normal),
+            CoreFilteredNoteStatus::Normal
+        );
+        assert_eq!(
+            CoreFilteredNoteStatus::from(FilteredNoteStatus::Deleted),
+            CoreFilteredNoteStatus::Deleted
+        );
     }
 }

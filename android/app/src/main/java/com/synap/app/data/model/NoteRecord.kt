@@ -7,6 +7,7 @@ data class NoteRecord(
     val content: String,
     val tags: List<String>,
     val createdAt: Long,
+    val deleted: Boolean,
 ) {
     companion object {
         fun fromDto(dto: NoteDto): NoteRecord = NoteRecord(
@@ -14,6 +15,7 @@ data class NoteRecord(
             content = dto.content,
             tags = dto.tags,
             createdAt = dto.createdAt,
+            deleted = dto.deleted,
         )
     }
 }

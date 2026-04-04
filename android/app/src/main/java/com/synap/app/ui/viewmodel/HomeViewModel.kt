@@ -2,6 +2,11 @@ package com.synap.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.synap.app.data.model.NoteFeedFilter
+import com.synap.app.data.model.NoteFeedStatus
+import com.synap.app.data.model.NoteRecord
+import com.synap.app.data.portal.CursorPortal
+import com.synap.app.data.portal.PortalState
 import com.synap.app.data.repository.SynapRepository
 import com.synap.app.ui.model.Note
 import com.synap.app.ui.model.toUiNote
@@ -20,7 +25,9 @@ data class HomeUiState(
     val isLoading: Boolean = true,
     val hasMore: Boolean = false,
     val isSearchMode: Boolean = false,
-    val showDeleted: Boolean = false,
+    val availableTags: List<String> = emptyList(),
+    val unselectedTags: Set<String> = emptySet(),
+    val isUntaggedUnselected: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -31,16 +38,49 @@ private data class HomeQueryState(
     val searchError: String?,
 )
 
+private data class HomeFilterState(
+    val availableTags: List<String>,
+    val unselectedTags: Set<String>,
+    val isUntaggedUnselected: Boolean,
+) {
+    fun toFeedFilter(): NoteFeedFilter {
+        val selectedTags = availableTags.filterNot { it in unselectedTags }
+        return NoteFeedFilter(
+            selectedTags = selectedTags,
+            includeUntagged = !isUntaggedUnselected,
+            tagFilterEnabled = unselectedTags.isNotEmpty() || isUntaggedUnselected,
+            status = NoteFeedStatus.Normal,
+        )
+    }
+}
+
+private data class HomeFeedState(
+    val notes: List<Note>,
+    val isLoading: Boolean,
+    val hasMore: Boolean,
+    val availableTags: List<String>,
+    val unselectedTags: Set<String>,
+    val isUntaggedUnselected: Boolean,
+    val errorMessage: String?,
+)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: SynapRepository,
 ) : ViewModel() {
-    private val recentPortal = repository.openRecentPortal(limit = 20u)
-    private val deletedPortal = repository.openDeletedPortal(limit = 20u)
+    private val pageLimit = 20u
+    private val recentPortal = repository.openRecentPortal(limit = pageLimit)
     private val query = MutableStateFlow("")
     private val searchResults = MutableStateFlow<List<Note>>(emptyList())
     private val isSearchLoading = MutableStateFlow(false)
     private val searchError = MutableStateFlow<String?>(null)
+    private val feedError = MutableStateFlow<String?>(null)
+    private val availableTags = MutableStateFlow<List<String>>(emptyList())
+    private val unselectedTags = MutableStateFlow<Set<String>>(emptySet())
+    private val isUntaggedUnselected = MutableStateFlow(false)
+    private val filteredPortalState = MutableStateFlow(PortalState<NoteRecord>())
+    private var filteredPortal: CursorPortal<NoteRecord>? = null
+    private var filteredPortalKey: NoteFeedFilter? = null
 
     private val queryState = combine(
         query,
@@ -56,43 +96,61 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    val uiState: StateFlow<HomeUiState> = combine(
+    private val filterState = combine(
+        availableTags,
+        unselectedTags,
+        isUntaggedUnselected,
+    ) { currentTags, currentUnselectedTags, currentIsUntaggedUnselected ->
+        HomeFilterState(
+            availableTags = currentTags,
+            unselectedTags = currentUnselectedTags.intersect(currentTags.toSet()),
+            isUntaggedUnselected = currentIsUntaggedUnselected,
+        )
+    }
+
+    private val homeFeedState = combine(
         recentPortal.state,
-        deletedPortal.state,
+        filteredPortalState,
+        filterState,
+    ) { recent, filtered, currentFilterState ->
+        val feedFilter = currentFilterState.toFeedFilter()
+        val useFilteredPortal = shouldUseFilteredPortal(feedFilter)
+
+        val activeFeed = if (useFilteredPortal) filtered else recent
+        val homeNotes = activeFeed.items.map { record -> record.toUiNote() }
+
+        HomeFeedState(
+            notes = homeNotes,
+            isLoading = activeFeed.isLoading,
+            hasMore = activeFeed.hasMore,
+            availableTags = currentFilterState.availableTags,
+            unselectedTags = currentFilterState.unselectedTags,
+            isUntaggedUnselected = currentFilterState.isUntaggedUnselected,
+            errorMessage = activeFeed.error?.message,
+        )
+    }
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        homeFeedState,
         queryState,
-    ) { recent, deleted, currentState ->
+        feedError,
+    ) { currentHomeFeed, currentState, currentFeedError ->
         val searchMode = currentState.query.isNotBlank()
-
-        val recentNotes = recent.items.map { it.toUiNote(isDeleted = false) }
-        val deletedNotes = deleted.items.map { it.toUiNote(isDeleted = true) }
-
-        // --- 核心修复 1：使用 Map 进行硬核去重 ---
-        // 因为 recent 和 deleted 是异步查出来的，当笔记状态刚切换时，
-        // 极可能在瞬间短暂地同时存在于两边。用 Map 可以完美覆盖旧数据。
-        val allNotesMap = mutableMapOf<String, Note>()
-        // 正常笔记先进
-        recentNotes.forEach { allNotesMap[it.id] = it }
-        // 垃圾桶笔记后进。如果存在重叠（说明刚被删除），以后进的 isDeleted=true 为准
-        deletedNotes.forEach { allNotesMap[it.id] = it }
-
-        val combinedNotes = allNotesMap.values.toList()
 
         HomeUiState(
             query = currentState.query,
-            notes = if (searchMode) currentState.searchResults else combinedNotes,
-            isLoading = if (searchMode) {
-                currentState.isSearchLoading
-            } else {
-                recent.isLoading || deleted.isLoading
-            },
-            hasMore = if (searchMode) {
-                false
-            } else {
-                recent.hasMore || deleted.hasMore
-            },
+            notes = if (searchMode) currentState.searchResults else currentHomeFeed.notes,
+            isLoading = if (searchMode) currentState.isSearchLoading else currentHomeFeed.isLoading,
+            hasMore = if (searchMode) false else currentHomeFeed.hasMore,
             isSearchMode = searchMode,
-            showDeleted = false,
-            errorMessage = currentState.searchError ?: recent.error?.message ?: deleted.error?.message,
+            availableTags = currentHomeFeed.availableTags,
+            unselectedTags = currentHomeFeed.unselectedTags,
+            isUntaggedUnselected = currentHomeFeed.isUntaggedUnselected,
+            errorMessage = if (searchMode) {
+                currentState.searchError
+            } else {
+                currentHomeFeed.errorMessage ?: currentFeedError
+            },
         )
     }.stateIn(
         scope = viewModelScope,
@@ -105,8 +163,10 @@ class HomeViewModel @Inject constructor(
 
         viewModelScope.launch {
             repository.mutations.collect {
+                invalidateHomePortals()
+                refreshAvailableTags()
                 if (query.value.isBlank()) {
-                    refresh()
+                    refreshHomeFeed()
                 } else {
                     rerunSearch()
                 }
@@ -136,8 +196,8 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch {
-            recentPortal.refresh()
-            deletedPortal.refresh()
+            refreshAvailableTags()
+            refreshHomeFeed()
         }
     }
 
@@ -147,12 +207,7 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            if (recentPortal.state.value.hasMore) {
-                recentPortal.loadNext()
-            }
-            if (deletedPortal.state.value.hasMore) {
-                deletedPortal.loadNext()
-            }
+            loadMoreHomeFeed()
         }
     }
 
@@ -165,9 +220,35 @@ class HomeViewModel @Inject constructor(
                     repository.deleteNote(note.id)
                 }
             }.onFailure { throwable ->
-                searchError.value = throwable.message ?: "Unable to update note"
+                feedError.value = throwable.message ?: "Unable to update note"
             }
         }
+    }
+
+    fun toggleTag(tag: String) {
+        unselectedTags.value = if (tag in unselectedTags.value) {
+            unselectedTags.value - tag
+        } else {
+            unselectedTags.value + tag
+        }
+        triggerFilterRefresh()
+    }
+
+    fun toggleUntagged() {
+        isUntaggedUnselected.value = !isUntaggedUnselected.value
+        triggerFilterRefresh()
+    }
+
+    fun toggleAllTags() {
+        val isAllSelected = unselectedTags.value.isEmpty() && !isUntaggedUnselected.value
+        if (isAllSelected) {
+            unselectedTags.value = availableTags.value.toSet()
+            isUntaggedUnselected.value = true
+        } else {
+            unselectedTags.value = emptySet()
+            isUntaggedUnselected.value = false
+        }
+        triggerFilterRefresh()
     }
 
     private suspend fun rerunSearch() {
@@ -192,5 +273,79 @@ class HomeViewModel @Inject constructor(
                 searchError.value = throwable.message ?: "Search failed"
             },
         )
+    }
+
+    private fun currentHomeFilter(): NoteFeedFilter {
+        val currentTags = availableTags.value
+        val effectiveUnselectedTags = unselectedTags.value.intersect(currentTags.toSet())
+        return HomeFilterState(
+            availableTags = currentTags,
+            unselectedTags = effectiveUnselectedTags,
+            isUntaggedUnselected = isUntaggedUnselected.value,
+        ).toFeedFilter()
+    }
+
+    private fun shouldUseFilteredPortal(filter: NoteFeedFilter): Boolean =
+        filter.tagFilterEnabled
+
+    private fun ensureFilteredPortal(filter: NoteFeedFilter): CursorPortal<NoteRecord> {
+        if (filteredPortal == null || filteredPortalKey != filter) {
+            filteredPortalKey = filter
+            filteredPortal = repository.openFilteredPortal(filter, limit = pageLimit)
+            filteredPortalState.value = filteredPortal!!.state.value
+        }
+
+        return filteredPortal!!
+    }
+
+    private fun invalidateHomePortals() {
+        recentPortal.invalidate()
+        filteredPortal?.invalidate()
+    }
+
+    private suspend fun refreshAvailableTags() {
+        runCatching {
+            repository.getAllTags()
+        }.onSuccess { tags ->
+            availableTags.value = tags
+            unselectedTags.value = unselectedTags.value.intersect(tags.toSet())
+            feedError.value = null
+        }.onFailure { throwable ->
+            feedError.value = throwable.message ?: "Unable to load tags"
+        }
+    }
+
+    private suspend fun refreshHomeFeed() {
+        val filter = currentHomeFilter()
+
+        if (shouldUseFilteredPortal(filter)) {
+            val portal = ensureFilteredPortal(filter)
+            portal.refresh()
+            filteredPortalState.value = portal.state.value
+        } else {
+            recentPortal.refresh()
+        }
+    }
+
+    private suspend fun loadMoreHomeFeed() {
+        val filter = currentHomeFilter()
+
+        if (shouldUseFilteredPortal(filter)) {
+            val portal = ensureFilteredPortal(filter)
+            if (portal.state.value.hasMore) {
+                portal.loadNext()
+                filteredPortalState.value = portal.state.value
+            }
+        } else if (recentPortal.state.value.hasMore) {
+            recentPortal.loadNext()
+        }
+    }
+
+    private fun triggerFilterRefresh() {
+        if (query.value.isBlank()) {
+            viewModelScope.launch {
+                refreshHomeFeed()
+            }
+        }
     }
 }

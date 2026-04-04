@@ -1,5 +1,6 @@
 package com.synap.app.data.service
 
+import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.NoteRecord
 import java.io.InputStream
 import java.io.OutputStream
@@ -36,6 +37,16 @@ interface SynapServiceApi {
     suspend fun search(query: String, limit: UInt): Result<List<NoteRecord>>
 
     suspend fun searchTags(query: String, limit: UInt): Result<List<String>>
+
+    suspend fun getAllTags(): Result<List<String>>
+
+    suspend fun getNotesByTag(tag: String, cursor: String?, limit: UInt?): Result<List<NoteRecord>>
+
+    suspend fun getFilteredNotes(
+        filter: NoteFeedFilter,
+        cursor: String?,
+        limit: UInt?,
+    ): Result<List<NoteRecord>>
 
     suspend fun createNote(content: String, tags: List<String>): Result<NoteRecord>
 

@@ -277,7 +277,7 @@ fun HomeScreen(
                             exit = fadeOut()
                         ) {
                             IconButton(onClick = onOpenSearch) {
-                                Icon(Icons.Filled.Search, contentDescription = "搜索")
+                                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.content_desc_search))
                             }
                         }
 
@@ -286,7 +286,7 @@ fun HomeScreen(
                         }
 
                         IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Filled.Settings, contentDescription = "设置")
+                            Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.content_desc_settings))
                         }
                     },
                 )
@@ -405,7 +405,7 @@ fun HomeScreen(
                                             }
                                         }
                                         Text(
-                                            text = "瀑布流",
+                                            text = stringResource(R.string.home_feed_waterfall),
                                             maxLines = 1,
                                             softWrap = false,
                                             style = MaterialTheme.typography.titleSmall,
@@ -442,7 +442,7 @@ fun HomeScreen(
                                             }
                                         }
                                         Text(
-                                            text = "时间组",
+                                            text = stringResource(R.string.home_feed_timeline),
                                             maxLines = 1,
                                             softWrap = false,
                                             style = MaterialTheme.typography.titleSmall,
@@ -489,14 +489,14 @@ fun HomeScreen(
                             FilterChip(
                                 selected = isAllSelected,
                                 onClick = onToggleAllTags,
-                                label = { Text("全部") }
+                                label = { Text(stringResource(R.string.home_filter_all)) }
                             )
                         }
                         item {
                             FilterChip(
                                 selected = !uiState.isUntaggedUnselected,
                                 onClick = onToggleUntaggedFilter,
-                                label = { Text("未分类") }
+                                label = { Text(stringResource(R.string.home_filter_untagged)) }
                             )
                         }
                         items(uiState.availableTags) { tag ->
@@ -555,7 +555,7 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = "这里空空如也",
+                                text = stringResource(R.string.home_empty),
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                         }
@@ -623,7 +623,7 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("已删除笔记", style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.home_deleted_note), style = MaterialTheme.typography.bodyMedium)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "${timeLeftSeconds}s",
@@ -633,7 +633,7 @@ fun HomeScreen(
                                 )
                             }
                             Text(
-                                text = "撤销删除",
+                                text = stringResource(R.string.home_undo_delete),
                                 color = MaterialTheme.colorScheme.primary,
                                 style = MaterialTheme.typography.labelLarge,
                                 modifier = Modifier

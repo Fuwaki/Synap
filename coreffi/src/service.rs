@@ -4,11 +4,7 @@ use std::sync::Arc;
 
 use crate::error::FfiError;
 use crate::types::{
-    BuildInfo,
-    FilteredNoteStatus,
-    NoteDTO,
-    TimelineDirection,
-    TimelineNotesPageDTO,
+    BuildInfo, FilteredNoteStatus, NoteDTO, TimelineDirection, TimelineNotesPageDTO,
     TimelineSessionsPageDTO,
 };
 use synap_core::dto::NoteDTO as CoreNoteDTO;
@@ -36,9 +32,7 @@ impl SynapService {
         page.into()
     }
 
-    fn map_session_page(
-        page: synap_core::dto::TimelineSessionsPageDTO,
-    ) -> TimelineSessionsPageDTO {
+    fn map_session_page(page: synap_core::dto::TimelineSessionsPageDTO) -> TimelineSessionsPageDTO {
         page.into()
     }
 

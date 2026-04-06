@@ -10,13 +10,8 @@ mod types;
 pub use error::FfiError;
 pub use service::{get_build_info, get_version_string, open, open_memory, SynapService};
 pub use types::{
-    BuildInfo,
-    FilteredNoteStatus,
-    NoteDTO,
-    TimelineDirection,
-    TimelineNotesPageDTO,
-    TimelineSessionDTO,
-    TimelineSessionsPageDTO,
+    BuildInfo, FilteredNoteStatus, NoteDTO, TimelineDirection, TimelineNotesPageDTO,
+    TimelineSessionDTO, TimelineSessionsPageDTO,
 };
 
 // Include uniffi bindings - this will generate the Kotlin bindings

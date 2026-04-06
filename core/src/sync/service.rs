@@ -10,9 +10,10 @@ use crate::{
     service::SynapService,
 };
 
+use super::frame::FrameCodec;
 use super::protocol::{
-    FrameCodec, SyncBucketEntry, SyncBucketSummary, SyncChannel, SyncConfig, SyncError,
-    SyncMessage, SyncRecordId, SyncStats, PROTOCOL_VERSION,
+    SyncBucketEntry, SyncBucketSummary, SyncChannel, SyncConfig, SyncError, SyncMessage,
+    SyncRecordId, SyncStats, PROTOCOL_VERSION,
 };
 
 const SYNC_BUCKET_COUNT: usize = (u8::MAX as usize) + 1;
@@ -64,9 +65,7 @@ impl LocalArchive {
                 std::collections::btree_map::Entry::Vacant(entry) => {
                     entry.insert(record);
                 }
-                std::collections::btree_map::Entry::Occupied(entry)
-                    if entry.get() != &record =>
-                {
+                std::collections::btree_map::Entry::Occupied(entry) if entry.get() != &record => {
                     return Err(SyncError::RecordIdCollision { record_id });
                 }
                 std::collections::btree_map::Entry::Occupied(_) => {}
@@ -190,6 +189,28 @@ impl RemoteBucketInventory {
     fn ids_in_bucket(&self, bucket: u8) -> &BTreeSet<SyncRecordId> {
         &self.bucket_record_ids[bucket as usize]
     }
+
+    fn validate_against(
+        &self,
+        expected_summaries: &BTreeMap<u8, SyncBucketSummary>,
+    ) -> Result<(), SyncError> {
+        for (bucket, summary) in expected_summaries {
+            let received = &self.bucket_record_ids[*bucket as usize];
+            if received.len() != summary.record_count {
+                return Err(SyncError::BucketInventoryCountMismatch {
+                    bucket: *bucket,
+                    expected: summary.record_count,
+                    received: received.len(),
+                });
+            }
+
+            if bucket_digest(&received.iter().copied().collect::<Vec<_>>())? != summary.digest {
+                return Err(SyncError::BucketInventoryDigestMismatch { bucket: *bucket });
+            }
+        }
+
+        Ok(())
+    }
 }
 
 struct ReceivedRecord {
@@ -223,9 +244,11 @@ impl<'a> SyncService<'a> {
         let remote_manifest = self.receive_manifest(channel, &mut stats)?;
 
         let mismatched_buckets = local.mismatched_buckets(&remote_manifest);
+        let expected_remote_buckets =
+            manifest_map_for_buckets(&remote_manifest, &mismatched_buckets);
         self.send_bucket_entries(channel, &local, &mismatched_buckets, &mut stats)?;
         let remote_inventory =
-            self.receive_bucket_entries(channel, &mismatched_buckets, &mut stats)?;
+            self.receive_bucket_entries(channel, &expected_remote_buckets, &mut stats)?;
 
         let (need_from_remote, need_from_local) =
             local.diff_against(&remote_inventory, &mismatched_buckets);
@@ -239,8 +262,8 @@ impl<'a> SyncService<'a> {
         stats.records_applied += applied;
         stats.records_skipped += skipped;
 
-        stats.bytes_sent += FrameCodec::write_message(channel, &SyncMessage::Done)?;
-        let (done, bytes) = FrameCodec::read_message(channel)?;
+        stats.bytes_sent += FrameCodec::write(channel, &SyncMessage::Done)?;
+        let (done, bytes) = FrameCodec::read::<SyncMessage>(channel)?;
         stats.bytes_received += bytes;
         match done {
             SyncMessage::Done => {}
@@ -251,8 +274,6 @@ impl<'a> SyncService<'a> {
                 });
             }
         }
-
-        channel.close()?;
         stats.duration_ms = started.elapsed().as_millis() as u64;
         Ok(stats)
     }
@@ -272,8 +293,10 @@ impl<'a> SyncService<'a> {
         self.send_manifest(channel, &local, &mut stats)?;
 
         let mismatched_buckets = local.mismatched_buckets(&remote_manifest);
+        let expected_remote_buckets =
+            manifest_map_for_buckets(&remote_manifest, &mismatched_buckets);
         let remote_inventory =
-            self.receive_bucket_entries(channel, &mismatched_buckets, &mut stats)?;
+            self.receive_bucket_entries(channel, &expected_remote_buckets, &mut stats)?;
         self.send_bucket_entries(channel, &local, &mismatched_buckets, &mut stats)?;
 
         let (need_from_remote, need_from_local) =
@@ -288,7 +311,7 @@ impl<'a> SyncService<'a> {
         stats.records_applied += applied;
         stats.records_skipped += skipped;
 
-        let (done, bytes) = FrameCodec::read_message(channel)?;
+        let (done, bytes) = FrameCodec::read::<SyncMessage>(channel)?;
         stats.bytes_received += bytes;
         match done {
             SyncMessage::Done => {}
@@ -299,9 +322,7 @@ impl<'a> SyncService<'a> {
                 });
             }
         }
-        stats.bytes_sent += FrameCodec::write_message(channel, &SyncMessage::Done)?;
-
-        channel.close()?;
+        stats.bytes_sent += FrameCodec::write(channel, &SyncMessage::Done)?;
         stats.duration_ms = started.elapsed().as_millis() as u64;
         Ok(stats)
     }
@@ -356,7 +377,7 @@ impl<'a> SyncService<'a> {
         channel: &mut C,
         stats: &mut SyncStats,
     ) -> Result<(), SyncError> {
-        stats.bytes_sent += FrameCodec::write_message(
+        stats.bytes_sent += FrameCodec::write(
             channel,
             &SyncMessage::Hello {
                 version: PROTOCOL_VERSION,
@@ -370,7 +391,7 @@ impl<'a> SyncService<'a> {
         channel: &mut C,
         stats: &mut SyncStats,
     ) -> Result<(), SyncError> {
-        let (message, bytes) = FrameCodec::read_message(channel)?;
+        let (message, bytes) = FrameCodec::read::<SyncMessage>(channel)?;
         stats.bytes_received += bytes;
 
         match message {
@@ -392,7 +413,7 @@ impl<'a> SyncService<'a> {
         local: &LocalArchive,
         stats: &mut SyncStats,
     ) -> Result<(), SyncError> {
-        stats.bytes_sent += FrameCodec::write_message(
+        stats.bytes_sent += FrameCodec::write(
             channel,
             &SyncMessage::Manifest {
                 buckets: local.manifest(),
@@ -406,7 +427,7 @@ impl<'a> SyncService<'a> {
         channel: &mut C,
         stats: &mut SyncStats,
     ) -> Result<Vec<SyncBucketSummary>, SyncError> {
-        let (message, bytes) = FrameCodec::read_message(channel)?;
+        let (message, bytes) = FrameCodec::read::<SyncMessage>(channel)?;
         stats.bytes_received += bytes;
 
         match message {
@@ -431,7 +452,7 @@ impl<'a> SyncService<'a> {
         let entries = local.bucket_entries(buckets);
 
         for batch in entries.chunks(self.config.max_records_per_message.max(1)) {
-            stats.bytes_sent += FrameCodec::write_message(
+            stats.bytes_sent += FrameCodec::write(
                 channel,
                 &SyncMessage::BucketEntries {
                     entries: batch.to_vec(),
@@ -439,26 +460,26 @@ impl<'a> SyncService<'a> {
             )?;
         }
 
-        stats.bytes_sent += FrameCodec::write_message(channel, &SyncMessage::BucketEntriesDone)?;
+        stats.bytes_sent += FrameCodec::write(channel, &SyncMessage::BucketEntriesDone)?;
         Ok(())
     }
 
     fn receive_bucket_entries<C: SyncChannel>(
         &self,
         channel: &mut C,
-        expected_buckets: &BTreeSet<u8>,
+        expected_buckets: &BTreeMap<u8, SyncBucketSummary>,
         stats: &mut SyncStats,
     ) -> Result<RemoteBucketInventory, SyncError> {
         let mut inventory = RemoteBucketInventory::new();
 
         loop {
-            let (message, bytes) = FrameCodec::read_message(channel)?;
+            let (message, bytes) = FrameCodec::read::<SyncMessage>(channel)?;
             stats.bytes_received += bytes;
 
             match message {
                 SyncMessage::BucketEntries { entries } => {
                     for entry in entries {
-                        if !expected_buckets.contains(&entry.bucket) {
+                        if !expected_buckets.contains_key(&entry.bucket) {
                             return Err(SyncError::UnexpectedBucket {
                                 bucket: entry.bucket,
                             });
@@ -476,6 +497,7 @@ impl<'a> SyncService<'a> {
             }
         }
 
+        inventory.validate_against(expected_buckets)?;
         Ok(inventory)
     }
 
@@ -487,7 +509,7 @@ impl<'a> SyncService<'a> {
     ) -> Result<(), SyncError> {
         for batch in records.chunks(self.config.max_records_per_message.max(1)) {
             stats.records_sent += batch.len();
-            stats.bytes_sent += FrameCodec::write_message(
+            stats.bytes_sent += FrameCodec::write(
                 channel,
                 &SyncMessage::Records {
                     records: batch.to_vec(),
@@ -495,7 +517,7 @@ impl<'a> SyncService<'a> {
             )?;
         }
 
-        stats.bytes_sent += FrameCodec::write_message(channel, &SyncMessage::RecordsDone)?;
+        stats.bytes_sent += FrameCodec::write(channel, &SyncMessage::RecordsDone)?;
         Ok(())
     }
 
@@ -506,9 +528,10 @@ impl<'a> SyncService<'a> {
         stats: &mut SyncStats,
     ) -> Result<Vec<ReceivedRecord>, SyncError> {
         let mut records = Vec::new();
+        let mut received_ids = BTreeSet::new();
 
         loop {
-            let (message, bytes) = FrameCodec::read_message(channel)?;
+            let (message, bytes) = FrameCodec::read::<SyncMessage>(channel)?;
             stats.bytes_received += bytes;
 
             match message {
@@ -521,6 +544,7 @@ impl<'a> SyncService<'a> {
                             return Err(SyncError::UnexpectedRecord { record_id });
                         }
 
+                        received_ids.insert(record_id);
                         records.push(ReceivedRecord {
                             id: record_id,
                             record,
@@ -537,6 +561,25 @@ impl<'a> SyncService<'a> {
             }
         }
 
+        if received_ids.len() != expected_record_ids.len() {
+            return Err(SyncError::IncompleteRecordTransfer {
+                expected: expected_record_ids.len(),
+                received: received_ids.len(),
+            });
+        }
+
         Ok(records)
     }
+}
+
+fn manifest_map_for_buckets(
+    manifest: &[SyncBucketSummary],
+    buckets: &BTreeSet<u8>,
+) -> BTreeMap<u8, SyncBucketSummary> {
+    manifest
+        .iter()
+        .filter(|summary| buckets.contains(&summary.bucket))
+        .cloned()
+        .map(|summary| (summary.bucket, summary))
+        .collect()
 }

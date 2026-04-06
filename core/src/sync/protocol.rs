@@ -4,20 +4,15 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{envelope, models::note::NoteRecord};
+use crate::models::note::NoteRecord;
 
 pub const PROTOCOL_VERSION: u8 = 1;
-const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 /// A transport-agnostic duplex byte channel for sync.
 ///
 /// Frontends are expected to bridge their own TCP/Bluetooth/WebRTC/etc.
 /// implementation to this trait. The core never depends on a real network stack.
-pub trait SyncChannel: Read + Write + Send {
-    fn close(&mut self) -> io::Result<()> {
-        self.flush()
-    }
-}
+pub trait SyncChannel: Read + Write + Send {}
 
 impl<T> SyncChannel for T where T: Read + Write + Send {}
 
@@ -119,65 +114,35 @@ pub enum SyncError {
     #[error("invalid sync manifest: {0}")]
     InvalidManifest(String),
 
-    #[error("sync bucket entry does not match bucket prefix: bucket={bucket}, record_id={record_id:?}")]
+    #[error(
+        "sync bucket entry does not match bucket prefix: bucket={bucket}, record_id={record_id:?}"
+    )]
     BucketEntryMismatch { bucket: u8, record_id: SyncRecordId },
-}
 
-pub(crate) struct FrameCodec;
+    #[error("sync bucket inventory mismatch for bucket {bucket}: expected {expected} ids, got {received}")]
+    BucketInventoryCountMismatch {
+        bucket: u8,
+        expected: usize,
+        received: usize,
+    },
 
-impl FrameCodec {
-    pub(crate) fn write_message(
-        channel: &mut impl SyncChannel,
-        message: &SyncMessage,
-    ) -> Result<usize, SyncError> {
-        let payload = envelope::encode_postcard(message).map_err(io::Error::from)?;
+    #[error("sync bucket inventory digest mismatch for bucket {bucket}")]
+    BucketInventoryDigestMismatch { bucket: u8 },
 
-        if payload.len() > MAX_FRAME_SIZE {
-            return Err(SyncError::Io(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "sync frame too large",
-            )));
-        }
-
-        let len = payload.len() as u32;
-        channel.write_all(&len.to_be_bytes())?;
-        channel.write_all(&payload)?;
-
-        Ok(payload.len() + 4)
-    }
-
-    pub(crate) fn read_message(
-        channel: &mut impl SyncChannel,
-    ) -> Result<(SyncMessage, usize), SyncError> {
-        let mut len_bytes = [0_u8; 4];
-        channel.read_exact(&mut len_bytes)?;
-        let len = u32::from_be_bytes(len_bytes) as usize;
-
-        if len > MAX_FRAME_SIZE {
-            return Err(SyncError::Io(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "sync frame too large",
-            )));
-        }
-
-        let mut payload = vec![0_u8; len];
-        channel.read_exact(&mut payload)?;
-        let message = envelope::decode_postcard(&payload).map_err(io::Error::from)?;
-
-        Ok((message, len + 4))
-    }
+    #[error("sync record transfer incomplete: expected {expected} unique records, got {received}")]
+    IncompleteRecordTransfer { expected: usize, received: usize },
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use super::*;
+    use crate::sync::frame::FrameCodec;
+    use std::io::Cursor;
 
     #[test]
     fn write_message_wraps_payload_in_envelope() {
         let mut channel = Cursor::new(Vec::new());
-        let written = FrameCodec::write_message(
+        let written = FrameCodec::write(
             &mut channel,
             &SyncMessage::Hello {
                 version: PROTOCOL_VERSION,
@@ -187,7 +152,7 @@ mod tests {
         let bytes = channel.into_inner();
 
         assert_eq!(written, bytes.len());
-        assert!(envelope::has_envelope_magic(&bytes[4..]));
+        assert!(crate::envelope::has_envelope_magic(&bytes[4..]));
     }
 
     #[test]
@@ -200,7 +165,7 @@ mod tests {
         bytes.extend_from_slice(&payload);
 
         let mut channel = Cursor::new(bytes);
-        let (decoded, read) = FrameCodec::read_message(&mut channel).unwrap();
+        let (decoded, read) = FrameCodec::read::<SyncMessage>(&mut channel).unwrap();
 
         assert_eq!(decoded, message);
         assert_eq!(read, payload.len() + 4);

@@ -1,8 +1,7 @@
 //! FFI-compatible type conversions for Synap.
 
 use synap_core::dto::{
-    NoteDTO as CoreNoteDto,
-    TimelineNotesPageDTO as CoreTimelineNotesPageDto,
+    NoteDTO as CoreNoteDto, TimelineNotesPageDTO as CoreTimelineNotesPageDto,
     TimelineSessionDTO as CoreTimelineSessionDto,
     TimelineSessionsPageDTO as CoreTimelineSessionsPageDto,
 };

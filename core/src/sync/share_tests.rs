@@ -1,87 +1,14 @@
-use std::{
-    collections::VecDeque,
-    io::{Read, Write},
-    sync::{Arc, Condvar, Mutex},
-};
-
 use tempfile::tempdir;
 use uuid::Uuid;
 
 use crate::{
     models::note::{EditLinkRecord, ReplyLinkRecord},
     service::SynapService,
-    sync::ShareService,
+    sync::{SharePackage, ShareService},
 };
 
-struct PipeState {
-    buffer: Mutex<VecDeque<u8>>,
-    ready: Condvar,
-}
-
-impl PipeState {
-    fn new() -> Self {
-        Self {
-            buffer: Mutex::new(VecDeque::new()),
-            ready: Condvar::new(),
-        }
-    }
-}
-
-struct MemoryChannel {
-    inbound: Arc<PipeState>,
-    outbound: Arc<PipeState>,
-}
-
-impl MemoryChannel {
-    fn pair() -> (Self, Self) {
-        let a_to_b = Arc::new(PipeState::new());
-        let b_to_a = Arc::new(PipeState::new());
-
-        (
-            Self {
-                inbound: b_to_a.clone(),
-                outbound: a_to_b.clone(),
-            },
-            Self {
-                inbound: a_to_b,
-                outbound: b_to_a,
-            },
-        )
-    }
-}
-
-impl Read for MemoryChannel {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut guard = self.inbound.buffer.lock().unwrap();
-        while guard.is_empty() {
-            guard = self.inbound.ready.wait(guard).unwrap();
-        }
-
-        let len = buf.len().min(guard.len());
-        for (dst, byte) in buf.iter_mut().zip(guard.drain(..len)) {
-            *dst = byte;
-        }
-
-        Ok(len)
-    }
-}
-
-impl Write for MemoryChannel {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut guard = self.outbound.buffer.lock().unwrap();
-        guard.extend(buf.iter().copied());
-        drop(guard);
-        self.outbound.ready.notify_all();
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 #[test]
-fn test_collect_selected_records_notes() {
+fn test_export_records_notes() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("test.redb");
 
@@ -94,16 +21,14 @@ fn test_collect_selected_records_notes() {
     let note2_id = Uuid::parse_str(&note2.id).unwrap();
 
     let share_service = ShareService::new(&service);
-    let records = share_service
-        .collect_selected_records(&[note1_id, note2_id])
-        .unwrap();
+    let records = share_service.export_records(&[note1_id, note2_id]).unwrap();
 
     assert_eq!(records.len(), 2);
     assert!(records.iter().all(|record| record.notes.len() == 1));
 }
 
 #[test]
-fn test_collect_selected_records_includes_tags_and_edit_history() {
+fn test_export_records_includes_tags_and_edit_history() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("test.redb");
 
@@ -124,9 +49,7 @@ fn test_collect_selected_records_includes_tags_and_edit_history() {
     let edited_id = Uuid::parse_str(&edited.id).unwrap();
 
     let share_service = ShareService::new(&service);
-    let records = share_service
-        .collect_selected_records(&[original_id])
-        .unwrap();
+    let records = share_service.export_records(&[original_id]).unwrap();
 
     assert_eq!(records.len(), 1);
     let record = &records[0];
@@ -146,7 +69,7 @@ fn test_collect_selected_records_includes_tags_and_edit_history() {
 }
 
 #[test]
-fn test_collect_selected_records_includes_incident_reply_links() {
+fn test_export_records_includes_incident_reply_links() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("test.redb");
 
@@ -161,9 +84,7 @@ fn test_collect_selected_records_includes_incident_reply_links() {
     let reply_id = Uuid::parse_str(&reply.id).unwrap();
 
     let share_service = ShareService::new(&service);
-    let records = share_service
-        .collect_selected_records(&[parent_id])
-        .unwrap();
+    let records = share_service.export_records(&[parent_id]).unwrap();
 
     assert_eq!(records.len(), 1);
     let record = &records[0];
@@ -175,7 +96,7 @@ fn test_collect_selected_records_includes_incident_reply_links() {
 }
 
 #[test]
-fn test_collect_selected_records_deduplicates_same_logical_note() {
+fn test_export_records_deduplicates_same_logical_note() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("test.redb");
 
@@ -191,14 +112,31 @@ fn test_collect_selected_records_deduplicates_same_logical_note() {
 
     let share_service = ShareService::new(&service);
     let records = share_service
-        .collect_selected_records(&[original_id, edited_id])
+        .export_records(&[original_id, edited_id])
         .unwrap();
 
     assert_eq!(records.len(), 1);
 }
 
 #[test]
-fn test_share_send_receive_round_trips_logical_notes() {
+fn test_export_bytes_round_trips_package_codec() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("test.redb");
+
+    let service = SynapService::new(Some(path.to_string_lossy().into_owned())).unwrap();
+    let note = service.create_note("note".to_string(), vec![]).unwrap();
+    let note_id = Uuid::parse_str(&note.id).unwrap();
+
+    let share_service = ShareService::new(&service);
+    let bytes = share_service.export_bytes(&[note_id]).unwrap();
+    let package = SharePackage::decode(&bytes).unwrap();
+
+    assert_eq!(package.version, crate::sync::SHARE_VERSION);
+    assert_eq!(package.records.len(), 1);
+}
+
+#[test]
+fn test_share_import_bytes_round_trips_logical_notes() {
     let dir = tempdir().unwrap();
     let path_a = dir.path().join("share-a.redb");
     let path_b = dir.path().join("share-b.redb");
@@ -226,13 +164,12 @@ fn test_share_send_receive_round_trips_logical_notes() {
 
     let share_a = ShareService::new(&service_a);
     let share_b = ShareService::new(&service_b);
-    let records = share_a
-        .collect_selected_records(&[root_id, reply_id])
-        .unwrap();
+    let bytes = share_a.export_bytes(&[root_id, reply_id]).unwrap();
+    let stats = share_b.import_bytes(&bytes).unwrap();
 
-    let (mut sender, mut receiver) = MemoryChannel::pair();
-    share_a.send(&mut sender, records).unwrap();
-    share_b.receive(&mut receiver).unwrap();
+    assert_eq!(stats.records, 2);
+    assert_eq!(stats.applied, 2);
+    assert_eq!(stats.bytes, bytes.len());
 
     let rust_hits = service_b.search("rust async", 10).unwrap();
     assert!(rust_hits.iter().any(|note| note.id == edited.id));

@@ -1,111 +1,97 @@
-use std::io;
-
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-use super::protocol::SyncChannel;
 use crate::{envelope, models::note::NoteRecord};
 
 pub const SHARE_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShareHeader {
+pub struct SharePackage {
     pub version: u8,
-    pub record_count: usize,
-    pub total_size_hint: usize,
+    pub records: Vec<NoteRecord>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+impl SharePackage {
+    pub fn new(records: Vec<NoteRecord>) -> Self {
+        Self {
+            version: SHARE_VERSION,
+            records,
+        }
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, ShareError> {
+        envelope::encode_postcard(self).map_err(Into::into)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ShareError> {
+        let package: Self = envelope::decode_postcard(bytes).map_err(ShareError::from)?;
+        if package.version != SHARE_VERSION {
+            return Err(ShareError::VersionMismatch {
+                expected: SHARE_VERSION,
+                got: package.version,
+            });
+        }
+        Ok(package)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShareStats {
-    pub records_sent: usize,
-    pub bytes_sent: usize,
+    pub records: usize,
+    pub applied: usize,
+    pub bytes: usize,
     pub duration_ms: u64,
 }
 
 impl Default for ShareStats {
     fn default() -> Self {
         Self {
-            records_sent: 0,
-            bytes_sent: 0,
+            records: 0,
+            applied: 0,
+            bytes: 0,
             duration_ms: 0,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ShareMessage {
-    Header(ShareHeader),
-    Records { records: Vec<NoteRecord> },
-    Done { stats: ShareStats },
-}
+#[derive(Debug, Error)]
+pub enum ShareError {
+    #[error(transparent)]
+    Envelope(#[from] crate::envelope::EnvelopeError),
 
-pub(crate) struct FrameCodec;
-
-impl FrameCodec {
-    pub(crate) fn write_message(
-        channel: &mut impl SyncChannel,
-        message: &ShareMessage,
-    ) -> Result<usize, io::Error> {
-        let payload = envelope::encode_postcard(message).map_err(io::Error::from)?;
-
-        let len = payload.len() as u32;
-        channel.write_all(&len.to_be_bytes())?;
-        channel.write_all(&payload)?;
-        channel.close()?;
-
-        Ok(payload.len() + 4)
-    }
-
-    pub(crate) fn read_message(channel: &mut impl SyncChannel) -> Result<ShareMessage, io::Error> {
-        let mut len_bytes = [0_u8; 4];
-        channel.read_exact(&mut len_bytes)?;
-        let len = u32::from_be_bytes(len_bytes) as usize;
-
-        let mut payload = vec![0_u8; len];
-        channel.read_exact(&mut payload)?;
-        let message = envelope::decode_postcard(&payload).map_err(io::Error::from)?;
-
-        Ok(message)
-    }
+    #[error("unsupported share version: expected {expected}, got {got}")]
+    VersionMismatch { expected: u8, got: u8 },
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use super::*;
 
     #[test]
-    fn write_message_wraps_payload_in_envelope() {
-        let message = ShareMessage::Header(ShareHeader {
-            version: SHARE_VERSION,
-            record_count: 2,
-            total_size_hint: 128,
-        });
-
-        let mut channel = Cursor::new(Vec::new());
-        let written = FrameCodec::write_message(&mut channel, &message).unwrap();
-        let bytes = channel.into_inner();
-
-        assert_eq!(written, bytes.len());
-        assert!(envelope::has_envelope_magic(&bytes[4..]));
+    fn encode_wraps_package_in_envelope() {
+        let bytes = SharePackage::new(Vec::new()).encode().unwrap();
+        assert!(envelope::has_envelope_magic(&bytes));
     }
 
     #[test]
-    fn read_message_accepts_legacy_plain_payload() {
-        let message = ShareMessage::Done {
-            stats: ShareStats {
-                records_sent: 3,
-                bytes_sent: 256,
-                duration_ms: 10,
-            },
-        };
-        let payload = postcard::to_allocvec(&message).unwrap();
+    fn decode_accepts_legacy_plain_payload() {
+        let package = SharePackage::new(Vec::new());
+        let bytes = postcard::to_allocvec(&package).unwrap();
 
-        let mut bytes = Vec::with_capacity(4 + payload.len());
-        bytes.extend_from_slice(&(payload.len() as u32).to_be_bytes());
-        bytes.extend_from_slice(&payload);
+        assert_eq!(SharePackage::decode(&bytes).unwrap(), package);
+    }
 
-        let mut channel = Cursor::new(bytes);
-        assert_eq!(FrameCodec::read_message(&mut channel).unwrap(), message);
+    #[test]
+    fn decode_rejects_unknown_version() {
+        let bytes = envelope::encode_postcard(&SharePackage {
+            version: SHARE_VERSION + 1,
+            records: Vec::new(),
+        })
+        .unwrap();
+
+        assert!(matches!(
+            SharePackage::decode(&bytes),
+            Err(ShareError::VersionMismatch { .. })
+        ));
     }
 }

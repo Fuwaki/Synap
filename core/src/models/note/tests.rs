@@ -402,7 +402,10 @@ fn test_export_record_sync_id_is_stable_across_versions() {
     let record_from_v2 = reader.export_record(&v2_id).unwrap().unwrap();
 
     assert_eq!(record_from_v1, record_from_v2);
-    assert_eq!(record_from_v1.sync_id().unwrap(), record_from_v2.sync_id().unwrap());
+    assert_eq!(
+        record_from_v1.sync_id().unwrap(),
+        record_from_v2.sync_id().unwrap()
+    );
 }
 
 #[test]

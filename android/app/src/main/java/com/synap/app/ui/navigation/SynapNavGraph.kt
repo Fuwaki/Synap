@@ -82,6 +82,9 @@ fun SynapNavGraph(
     val configuration = LocalConfiguration.current
     val isLargeScreen = configuration.screenWidthDp >= 600
     var showSettingsSidebar by rememberSaveable { mutableStateOf(false) }
+    var showTypographySidebar by rememberSaveable { mutableStateOf(false) }
+    var showLanguageSidebar by rememberSaveable { mutableStateOf(false) }
+    var showTeamSidebar by rememberSaveable { mutableStateOf(false) }
 
     val startDestination = remember { if (hasSeenTutorial) "home" else "tutorial" }
 
@@ -189,25 +192,50 @@ fun SynapNavGraph(
                     customThemeHue = customThemeHue, onCustomThemeHueChange = onCustomThemeHueChange,
                     handedness = handedness, onHandednessChange = onHandednessChange,
                     databaseActivity = databaseActivity,
-                    onNavigateToTypographySettings = { navController.navigate("typography_settings") },
-                    onNavigateToLanguageSelection = { navController.navigate("language_selection") },
+                    onNavigateToTypographySettings = { 
+                        if (isLargeScreen) showTypographySidebar = true else navController.navigate("typography_settings")
+                    },
+                    onNavigateToLanguageSelection = { 
+                        if (isLargeScreen) showLanguageSidebar = true else navController.navigate("language_selection")
+                    },
+                    onNavigateToTeam = { 
+                        if (isLargeScreen) showTeamSidebar = true else navController.navigate("team")
+                    },
                     onNavigateToTutorial = { navController.navigate("tutorial") },
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
 
             composable("language_selection") {
-                LanguageSelectionScreen(
+                if (isLargeScreen) {
+                    showLanguageSidebar = true
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                }
+                LanguageSelectionContainer(
                     languages = languages, selectedIndex = selectedLanguageIndex,
                     onLanguageSelect = onLanguageSelect, onNavigateBack = { navController.popBackStack() }
                 )
             }
 
             composable("typography_settings") {
-                TypographySettingsScreen(
+                if (isLargeScreen) {
+                    showTypographySidebar = true
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                }
+                TypographySettingsContainer(
                     currentFontFamily = currentFontFamily, onFontFamilyChange = onFontFamilyChange,
-                    currentFontWeight = currentFontWeight, onFontWeightChange = onFontWeightChange, // --- 传入 ---
+                    currentFontWeight = currentFontWeight, onFontWeightChange = onFontWeightChange,
                     noteTextSize = noteTextSize, onNoteTextSizeChange = onNoteTextSizeChange,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("team") {
+                if (isLargeScreen) {
+                    showTeamSidebar = true
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                }
+                TeamScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
@@ -263,11 +291,77 @@ fun SynapNavGraph(
                     useMonet = useMonet, supportsMonet = supportsMonet, onUseMonetChange = onUseMonetChange,
                     customThemeHue = customThemeHue, onCustomThemeHueChange = onCustomThemeHueChange,
                     handedness = handedness, onHandednessChange = onHandednessChange, databaseActivity = databaseActivity,
-                    onNavigateToTypographySettings = { showSettingsSidebar = false; navController.navigate("typography_settings") },
-                    onNavigateToLanguageSelection = { showSettingsSidebar = false; navController.navigate("language_selection") },
+                    onNavigateToTypographySettings = { showTypographySidebar = true },
+                    onNavigateToLanguageSelection = { showLanguageSidebar = true },
+                    onNavigateToTeam = { showTeamSidebar = true },
                     onNavigateToTutorial = { showSettingsSidebar = false; navController.navigate("tutorial") },
                     onNavigateBack = { showSettingsSidebar = false }
                 )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isLargeScreen && showTypographySidebar,
+            enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable(
+                interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = { showTypographySidebar = false }
+            ))
+        }
+
+        AnimatedVisibility(
+            visible = isLargeScreen && showTypographySidebar,
+            enter = slideInHorizontally(initialOffsetX = { it }), exit = slideOutHorizontally(targetOffsetX = { it }),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            Surface(modifier = Modifier.width(320.dp).fillMaxHeight(), shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp), shadowElevation = 8.dp) {
+                TypographySettingsContainer(
+                    currentFontFamily = currentFontFamily, onFontFamilyChange = onFontFamilyChange,
+                    currentFontWeight = currentFontWeight, onFontWeightChange = onFontWeightChange,
+                    noteTextSize = noteTextSize, onNoteTextSizeChange = onNoteTextSizeChange,
+                    onNavigateBack = { showTypographySidebar = false }
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isLargeScreen && showLanguageSidebar,
+            enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable(
+                interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = { showLanguageSidebar = false }
+            ))
+        }
+
+        AnimatedVisibility(
+            visible = isLargeScreen && showLanguageSidebar,
+            enter = slideInHorizontally(initialOffsetX = { it }), exit = slideOutHorizontally(targetOffsetX = { it }),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            Surface(modifier = Modifier.width(320.dp).fillMaxHeight(), shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp), shadowElevation = 8.dp) {
+                LanguageSelectionContainer(
+                    languages = languages, selectedIndex = selectedLanguageIndex,
+                    onLanguageSelect = onLanguageSelect, onNavigateBack = { showLanguageSidebar = false }
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isLargeScreen && showTeamSidebar,
+            enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable(
+                interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = { showTeamSidebar = false }
+            ))
+        }
+
+        AnimatedVisibility(
+            visible = isLargeScreen && showTeamSidebar,
+            enter = slideInHorizontally(initialOffsetX = { it }), exit = slideOutHorizontally(targetOffsetX = { it }),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            Surface(modifier = Modifier.width(320.dp).fillMaxHeight(), shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp), shadowElevation = 8.dp) {
+                TeamScreen(onNavigateBack = { showTeamSidebar = false })
             }
         }
     }

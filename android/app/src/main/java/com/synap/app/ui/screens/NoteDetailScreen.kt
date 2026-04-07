@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.synap.app.LocalNoteFontFamily
 import com.synap.app.LocalNoteFontWeight
 import com.synap.app.LocalNoteTextSize
+import com.synap.app.LocalNoteLineSpacing // --- 引入新的全局行距配置 ---
 import com.synap.app.ui.model.Note
 import com.synap.app.ui.util.formatNoteTime
 import com.synap.app.ui.viewmodel.DetailUiState
@@ -211,14 +212,14 @@ fun NoteDetailScreen(
                 }
             }
 
-            // --- 核心修改 1：应用字体和字重 ---
+            // --- 核心修改：注入行距参数 ---
             Text(
                 text = note.content,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontFamily = LocalNoteFontFamily.current,
                     fontWeight = LocalNoteFontWeight.current,
                     fontSize = LocalNoteTextSize.current,
-                    lineHeight = LocalNoteTextSize.current * 1.5f
+                    lineHeight = LocalNoteTextSize.current * LocalNoteLineSpacing.current // 应用全局行距配置
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -292,14 +293,14 @@ private fun RelationSection(
                     .clickable { onOpenRelatedNote(note.id) },
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    // --- 核心修改 2：关联笔记也应用字体和字重，只是字号略小 ---
+                    // --- 核心修改：注入行距参数 ---
                     Text(
                         text = note.content,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = LocalNoteFontFamily.current,
                             fontWeight = LocalNoteFontWeight.current,
                             fontSize = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp,
-                            lineHeight = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp * 1.5f
+                            lineHeight = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp * LocalNoteLineSpacing.current // 应用全局行距配置
                         ),
                     )
                     if (note.tags.isNotEmpty()) {

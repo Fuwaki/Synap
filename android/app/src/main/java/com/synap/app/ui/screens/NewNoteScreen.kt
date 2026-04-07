@@ -64,6 +64,8 @@ import com.synap.app.R
 import com.synap.app.ui.viewmodel.EditorMode
 import com.synap.app.ui.viewmodel.EditorUiState
 import kotlinx.coroutines.delay
+import com.synap.app.LocalNoteLineSpacing
+import androidx.compose.ui.unit.sp
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -219,7 +221,7 @@ fun NewNoteScreen(
                         fontFamily = LocalNoteFontFamily.current,
                         fontWeight = LocalNoteFontWeight.current,
                         fontSize = LocalNoteTextSize.current,
-                        lineHeight = LocalNoteTextSize.current * 1.5f,
+                        lineHeight = (LocalNoteTextSize.current.value * LocalNoteLineSpacing.current).sp,
                         color = MaterialTheme.colorScheme.onSurface
                     ),
                     placeholder = { Text(stringResource(R.string.edit_placeholder)) },

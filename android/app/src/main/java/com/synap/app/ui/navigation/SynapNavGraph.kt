@@ -51,10 +51,12 @@ fun SynapNavGraph(
     onLanguageSelect: (Int) -> Unit,
     currentFontFamily: String,
     onFontFamilyChange: (String) -> Unit,
-    currentFontWeight: Int, // --- 新增参数 ---
-    onFontWeightChange: (Int) -> Unit, // --- 新增参数 ---
+    currentFontWeight: Int,
+    onFontWeightChange: (Int) -> Unit,
     noteTextSize: Float,
     onNoteTextSizeChange: (Float) -> Unit,
+    noteLineSpacing: Float,
+    onNoteLineSpacingChange: (Float) -> Unit,
     hasSeenTutorial: Boolean,
     onTutorialFinished: () -> Unit,
     databaseActivity: MainActivity?,
@@ -174,17 +176,20 @@ fun SynapNavGraph(
             }
 
             composable("language_selection") {
-                LanguageSelectionContainer(
+                // 恢复为正确的名称
+                LanguageSelectionScreen(
                     languages = languages, selectedIndex = selectedLanguageIndex,
                     onLanguageSelect = onLanguageSelect, onNavigateBack = { navController.popBackStack() }
                 )
             }
 
             composable("typography_settings") {
-                TypographySettingsContainer(
+                // 恢复为正确的名称：TypographySettingsScreen
+                TypographySettingsScreen(
                     currentFontFamily = currentFontFamily, onFontFamilyChange = onFontFamilyChange,
                     currentFontWeight = currentFontWeight, onFontWeightChange = onFontWeightChange,
                     noteTextSize = noteTextSize, onNoteTextSizeChange = onNoteTextSizeChange,
+                    noteLineSpacing = noteLineSpacing, onNoteLineSpacingChange = onNoteLineSpacingChange,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
@@ -219,9 +224,12 @@ fun SynapNavGraph(
                 }
 
                 NewNoteScreen(
-                    uiState = uiState, onNavigateBack = { navController.popBackStack() },
-                    onContentChange = viewModel::updateContent, onAddTag = viewModel::addTag,
-                    onRemoveTag = viewModel::removeTag, onSave = viewModel::save,
+                    uiState = uiState,
+                    onNavigateBack = { navController.popBackStack() },
+                    onContentChange = viewModel::updateContent,
+                    onAddTag = viewModel::addTag,
+                    onRemoveTag = viewModel::removeTag,
+                    onSave = viewModel::save,
                 )
             }
         }

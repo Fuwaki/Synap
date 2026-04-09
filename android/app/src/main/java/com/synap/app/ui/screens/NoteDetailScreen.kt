@@ -45,6 +45,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.ParagraphStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +65,127 @@ import com.synap.app.ui.model.Note
 import com.synap.app.ui.util.formatNoteTime
 import com.synap.app.ui.viewmodel.DetailUiState
 import kotlinx.coroutines.launch
+
+// ==================== 共享 Markdown 渲染引擎 ====================
+fun buildMarkdownAnnotatedString(
+    text: String,
+    primaryColor: Color,
+    highlightColor: Color,
+    baseFontSize: Float,
+    isCompact: Boolean = false
+): AnnotatedString {
+    val charArray = text.toCharArray()
+    Regex("^(> )", RegexOption.MULTILINE).findAll(text).forEach { charArray[it.range.first] = '“' }
+    Regex("^-\\s+\\[ \\]\\s", RegexOption.MULTILINE).findAll(text).forEach { match ->
+        charArray[match.range.first] = '☐'
+        for (i in match.range.first + 1..match.range.last) charArray[i] = ' '
+    }
+    Regex("^-\\s+\\[x\\]\\s", RegexOption.MULTILINE).findAll(text).forEach { match ->
+        charArray[match.range.first] = '☑'
+        for (i in match.range.first + 1..match.range.last) charArray[i] = ' '
+    }
+    if (!isCompact) {
+        Regex("^- (?!(\\[ \\]|\\[x\\]))", RegexOption.MULTILINE).findAll(text).forEach { charArray[it.range.first] = '•' }
+    }
+    val visualString = String(charArray)
+
+    return buildAnnotatedString {
+        append(visualString)
+        val hiddenSpanStyle = SpanStyle(color = Color.Transparent, fontSize = 0.1.sp)
+
+        fun processMatches(regex: Regex, style: SpanStyle) {
+            regex.findAll(visualString).forEach { match ->
+                if (match.groups.size >= 2) {
+                    val content = match.groups[1]!!
+                    addStyle(style, content.range.first, content.range.last + 1)
+                    addStyle(hiddenSpanStyle, match.range.first, content.range.first)
+                    addStyle(hiddenSpanStyle, content.range.last + 1, match.range.last + 1)
+                }
+            }
+        }
+
+        processMatches(Regex("(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"), SpanStyle(fontStyle = FontStyle.Italic))
+        processMatches(Regex("~~(.*?)~~"), SpanStyle(textDecoration = TextDecoration.LineThrough))
+        processMatches(Regex("<u>(.*?)</u>"), SpanStyle(textDecoration = TextDecoration.Underline))
+        processMatches(Regex("==(.*?)=="), SpanStyle(background = highlightColor, color = Color.Black))
+
+        Regex("^☐(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
+            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+        }
+        Regex("^☑(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
+            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+        }
+
+        if (!isCompact) {
+            processMatches(Regex("\\*\\*\\*(.*?)\\*\\*\\*"), SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic))
+            processMatches(Regex("(?<!\\*)\\*\\*(?!\\*)(.*?)(?<!\\*)\\*\\*(?!\\*)"), SpanStyle(fontWeight = FontWeight.Bold))
+
+            Regex("^(#{1,4} )(.*)", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+                if (match.groups.size >= 3) {
+                    val level = match.groups[1]!!.value.trim().length
+                    val scale = 1.8f - (level * 0.15f)
+                    addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+                    val lineEnd = visualString.indexOf('\n', match.range.last).takeIf { it != -1 } ?: visualString.length
+                    addStyle(SpanStyle(fontWeight = FontWeight.ExtraBold, fontSize = (baseFontSize * scale).sp, color = primaryColor), match.groups[2]!!.range.first, match.groups[2]!!.range.last + 1)
+                    addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.5f).sp), match.range.first, match.range.last + 1)
+                }
+            }
+
+            val lines = visualString.split('\n')
+            var offset = 0
+            var inQuote = false
+            var quoteStart = 0
+
+            for (i in lines.indices) {
+                val line = lines[i]
+                val lineLength = line.length
+
+                if (line.startsWith("“ ")) {
+                    if (!inQuote) {
+                        inQuote = true
+                        quoteStart = offset
+                        addStyle(SpanStyle(color = Color.Gray, fontSize = (baseFontSize * 1.5f).sp, fontWeight = FontWeight.Black), offset, offset + 1)
+                        addStyle(hiddenSpanStyle, offset + 1, offset + 2)
+                    } else {
+                        addStyle(hiddenSpanStyle, offset, offset + 2)
+                    }
+                    addStyle(SpanStyle(color = Color.Gray), offset + 2, offset + lineLength)
+                } else {
+                    if (inQuote) {
+                        inQuote = false
+                        addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.5f).sp), quoteStart, offset)
+                    }
+                }
+                offset += lineLength + 1
+            }
+            if (inQuote) {
+                addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.5f).sp), quoteStart, offset - 1)
+            }
+
+            Regex("^•( )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+                addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.Bold), match.range.first, match.range.first + 1)
+            }
+        } else {
+            Regex("\\*\\*\\*|\\*\\*").findAll(visualString).forEach { match ->
+                addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
+            }
+            Regex("^(#{1,4} )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+                addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
+            }
+            Regex("^“( )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+                addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
+            }
+            Regex("^>+ ", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+                addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
+            }
+            Regex("^(-\\s+|\\d+\\.\\s+)", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+                addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
+            }
+        }
+    }
+}
 
 @Suppress("OPT_IN_USAGE", "OPT_IN_USAGE_FUTURE_ERROR")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -97,7 +226,6 @@ fun NoteDetailScreen(
                 },
             )
         },
-        // --- 核心修改 1：彻底移除 bottomBar，释放底部完整空间 ---
         floatingActionButton = {
             if (uiState.note != null) {
                 AnimatedVisibility(
@@ -194,8 +322,17 @@ fun NoteDetailScreen(
                         }
                     }
 
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+                    val baseFontSize = LocalNoteTextSize.current.value
+
+                    // 详情页正文使用共享渲染引擎（Full 完整模式）
+                    val annotatedContent = remember(note.content, primaryColor, highlightColor, baseFontSize) {
+                        buildMarkdownAnnotatedString(note.content, primaryColor, highlightColor, baseFontSize, isCompact = false)
+                    }
+
                     Text(
-                        text = note.content,
+                        text = annotatedContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontFamily = LocalNoteFontFamily.current,
                             fontWeight = LocalNoteFontWeight.current,
@@ -246,7 +383,6 @@ fun NoteDetailScreen(
                     Spacer(modifier = Modifier.height(120.dp))
                 }
 
-                // --- 核心修改 2：作为绝对定位的悬浮层叠加在最上面 ---
                 HorizontalFloatingToolbar(
                     expanded = true,
                     modifier = Modifier
@@ -307,6 +443,10 @@ private fun RelationSection(
         modifier = Modifier.padding(top = 24.dp, bottom = 12.dp),
     )
 
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+    val baseFontSize = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f)
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         notes.forEach { note ->
             Surface(
@@ -317,13 +457,19 @@ private fun RelationSection(
                     .clickable { onOpenRelatedNote(note.id) },
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
+
+                    // 关联卡片使用共享渲染引擎（Compact 紧凑模式）
+                    val annotatedContent = remember(note.content, primaryColor, highlightColor, baseFontSize) {
+                        buildMarkdownAnnotatedString(note.content, primaryColor, highlightColor, baseFontSize, isCompact = true)
+                    }
+
                     Text(
-                        text = note.content,
+                        text = annotatedContent,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = LocalNoteFontFamily.current,
                             fontWeight = LocalNoteFontWeight.current,
-                            fontSize = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp,
-                            lineHeight = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp * LocalNoteLineSpacing.current
+                            fontSize = baseFontSize.sp,
+                            lineHeight = baseFontSize.sp * LocalNoteLineSpacing.current
                         ),
                     )
                     if (note.tags.isNotEmpty()) {

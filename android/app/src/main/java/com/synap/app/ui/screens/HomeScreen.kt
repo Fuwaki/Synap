@@ -1,5 +1,6 @@
 package com.synap.app.ui.screens
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -43,7 +44,11 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.ViewStream
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -74,6 +79,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -113,9 +119,32 @@ fun HomeScreen(
     onToggleUntaggedFilter: () -> Unit,
     onToggleAllTags: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("synap_prefs", Context.MODE_PRIVATE) }
+
     val noteGridState = rememberLazyStaggeredGridState()
     val sessionGridState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
+
+    // 提取当前是否处于瀑布流模式 (Waterfall 对应 isFilterPanelOpen = true)
+    val isFeed = !uiState.showSessionFeed
+
+    // 初始化时读取本地存储的偏好设置
+    LaunchedEffect(Unit) {
+        val savedMode = prefs.getBoolean("is_waterfall_mode", true) // 默认瀑布流
+        onSetFilterPanelOpen(savedMode)
+    }
+
+    // 切换模式并保存至本地
+    fun switchFeedMode(waterfall: Boolean) {
+        prefs.edit().putBoolean("is_waterfall_mode", waterfall).apply()
+        onSetFilterPanelOpen(waterfall)
+        if (waterfall) {
+            scope.launch { noteGridState.animateScrollToItem(0) }
+        } else {
+            scope.launch { sessionGridState.animateScrollToItem(0) }
+        }
+    }
 
     var deletedNoteToUndo by remember { mutableStateOf<Note?>(null) }
     var undoProgress by remember { mutableFloatStateOf(1f) }
@@ -125,6 +154,8 @@ fun HomeScreen(
 
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     var selectedNoteIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+
+    var showFeedMenu by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) {
         isSelectionMode = false
@@ -137,7 +168,6 @@ fun HomeScreen(
         } else {
             selectedNoteIds + noteId
         }
-        // 删除了这里的 if (selectedNoteIds.isEmpty()) 自动退出逻辑
     }
 
     fun finalizePendingDelete(note: Note) {
@@ -199,8 +229,6 @@ fun HomeScreen(
             }
         }
     }
-
-    var isTagsExpanded by rememberSaveable { mutableStateOf(false) }
 
     val displayNotes = remember(uiState.notes, pendingDeleteNoteIds) {
         uiState.notes
@@ -319,6 +347,47 @@ fun HomeScreen(
                                 }
                             }
 
+                            // --- 切换布局垂直菜单 ---
+                            Box {
+                                IconButton(onClick = { showFeedMenu = true }) {
+                                    Icon(
+                                        imageVector = if (isFeed) Icons.Filled.ViewStream else Icons.Filled.ViewAgenda,
+                                        contentDescription = "Switch Feed View"
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showFeedMenu,
+                                    onDismissRequest = { showFeedMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_feed_waterfall)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Filled.ViewStream, contentDescription = null)
+                                        },
+                                        trailingIcon = {
+                                            if (isFeed) Icon(Icons.Filled.Check, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                        },
+                                        onClick = {
+                                            switchFeedMode(true)
+                                            showFeedMenu = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_feed_timeline)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Filled.ViewAgenda, contentDescription = null)
+                                        },
+                                        trailingIcon = {
+                                            if (!isFeed) Icon(Icons.Filled.Check, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                        },
+                                        onClick = {
+                                            switchFeedMode(false)
+                                            showFeedMenu = false
+                                        }
+                                    )
+                                }
+                            }
+
                             IconButton(onClick = onOpenTrash) {
                                 Icon(Icons.Filled.DeleteSweep, contentDescription = stringResource(R.string.trash_title))
                             }
@@ -406,102 +475,11 @@ fun HomeScreen(
                             }
                         }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        FloatingActionButton(
+                            onClick = onComposeNote,
+                            modifier = Modifier.size(56.dp)
                         ) {
-                            AnimatedVisibility(
-                                visible = !uiState.isSearchMode,
-                                enter = fadeIn() + slideInHorizontally { it / 2 },
-                                exit = fadeOut() + slideOutHorizontally { it / 2 }
-                            ) {
-                                val isFeed = !uiState.showSessionFeed
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    shadowElevation = 6.dp,
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    modifier = Modifier.height(56.dp)
-                                ) {
-                                    Row {
-                                        Surface(
-                                            onClick = {
-                                                onSetFilterPanelOpen(true)
-                                                scope.launch { noteGridState.animateScrollToItem(0) }
-                                            },
-                                            shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp),
-                                            color = if (isFeed) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                            modifier = Modifier.fillMaxHeight()
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center,
-                                                modifier = Modifier.padding(horizontal = 16.dp)
-                                            ) {
-                                                AnimatedVisibility(visible = isFeed) {
-                                                    Row {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Check,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                    }
-                                                }
-                                                Text(
-                                                    text = stringResource(R.string.home_feed_waterfall),
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = if (isFeed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-
-                                        Surface(
-                                            onClick = {
-                                                onSetFilterPanelOpen(false)
-                                                scope.launch { sessionGridState.animateScrollToItem(0) }
-                                            },
-                                            shape = RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp),
-                                            color = if (!isFeed) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                            modifier = Modifier.fillMaxHeight()
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center,
-                                                modifier = Modifier.padding(horizontal = 16.dp)
-                                            ) {
-                                                AnimatedVisibility(visible = !isFeed) {
-                                                    Row {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Check,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                    }
-                                                }
-                                                Text(
-                                                    text = stringResource(R.string.home_feed_timeline),
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = if (!isFeed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            FloatingActionButton(
-                                onClick = onComposeNote,
-                                modifier = Modifier.size(56.dp)
-                            ) {
-                                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
-                            }
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
                         }
                     }
                 }

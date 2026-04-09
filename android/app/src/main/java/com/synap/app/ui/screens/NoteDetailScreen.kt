@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,9 +25,12 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -40,20 +47,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.synap.app.LocalNoteFontFamily
 import com.synap.app.LocalNoteFontWeight
+import com.synap.app.LocalNoteLineSpacing
 import com.synap.app.LocalNoteTextSize
-import com.synap.app.LocalNoteLineSpacing // --- 引入新的全局行距配置 ---
+import com.synap.app.R
 import com.synap.app.ui.model.Note
 import com.synap.app.ui.util.formatNoteTime
 import com.synap.app.ui.viewmodel.DetailUiState
 import kotlinx.coroutines.launch
-import androidx.compose.ui.res.stringResource
-import com.synap.app.R
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Suppress("OPT_IN_USAGE", "OPT_IN_USAGE_FUTURE_ERROR")
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NoteDetailScreen(
     uiState: DetailUiState,
@@ -82,61 +90,70 @@ fun NoteDetailScreen(
                 navigationIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.back)
-                            )
+                            Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                         IconButton(onClick = onNavigateHome) {
-                            Icon(Icons.Filled.Home, contentDescription = stringResource(R.string.home)
-                            )
+                            Icon(Icons.Filled.Home, contentDescription = stringResource(R.string.home))
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onDelete, enabled = uiState.note != null) {
-                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete)
-                        )
                     }
                 },
             )
         },
+        bottomBar = {
+            if (uiState.note != null) {
+                // 使用 Box 仅用于将其居中并设置底边距
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // --- 彻底使用官方原生组件，无自定义颜色 ---
+                    HorizontalFloatingToolbar(
+                        expanded = true, // 让工具栏保持展开状态以显示内部按钮
+                    ) {
+                        TextButton(onClick = onDelete) {
+                            Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.delete))
+                        }
+                        TextButton(onClick = { /* 仅作 UI 展示，暂无功能 */ }) {
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("分享")
+                        }
+                        TextButton(onClick = onReply) {
+                            Icon(Icons.Filled.Reply, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.reply))
+                        }
+                        TextButton(onClick = onEdit) {
+                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.edit))
+                        }
+                    }
+                }
+            }
+        },
         floatingActionButton = {
             if (uiState.note != null) {
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                AnimatedVisibility(
+                    visible = isScrolledDown,
+                    enter = fadeIn(),
+                    exit = fadeOut()
                 ) {
-                    AnimatedVisibility(
-                        visible = isScrolledDown,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        ExtendedFloatingActionButton(
-                            onClick = {
-                                scope.launch {
-                                    scrollState.animateScrollTo(0)
-                                }
-                            },
-                            icon = { Icon(Icons.Filled.ArrowUpward, contentDescription = null) },
-                            text = { Text(text = stringResource(R.string.backtop)) },
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-
                     ExtendedFloatingActionButton(
-                        onClick = onEdit,
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        icon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                        text = { Text(text = stringResource(R.string.edit)) }
-                    )
-
-                    ExtendedFloatingActionButton(
-                        onClick = onReply,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        icon = { Icon(Icons.Filled.Reply, contentDescription = null) },
-                        text = { Text(text = stringResource(R.string.reply)) }
+                        onClick = {
+                            scope.launch {
+                                scrollState.animateScrollTo(0)
+                            }
+                        },
+                        icon = { Icon(Icons.Filled.ArrowUpward, contentDescription = null) },
+                        text = { Text(text = stringResource(R.string.backtop)) },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(bottom = 80.dp) // 避开底部工具栏
                     )
                 }
             }
@@ -216,14 +233,13 @@ fun NoteDetailScreen(
                 }
             }
 
-            // --- 核心修改：注入行距参数 ---
             Text(
                 text = note.content,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontFamily = LocalNoteFontFamily.current,
                     fontWeight = LocalNoteFontWeight.current,
                     fontSize = LocalNoteTextSize.current,
-                    lineHeight = LocalNoteTextSize.current * LocalNoteLineSpacing.current // 应用全局行距配置
+                    lineHeight = LocalNoteTextSize.current * LocalNoteLineSpacing.current
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -297,14 +313,13 @@ private fun RelationSection(
                     .clickable { onOpenRelatedNote(note.id) },
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    // --- 核心修改：注入行距参数 ---
                     Text(
                         text = note.content,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = LocalNoteFontFamily.current,
                             fontWeight = LocalNoteFontWeight.current,
                             fontSize = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp,
-                            lineHeight = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp * LocalNoteLineSpacing.current // 应用全局行距配置
+                            lineHeight = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f).sp * LocalNoteLineSpacing.current
                         ),
                     )
                     if (note.tags.isNotEmpty()) {

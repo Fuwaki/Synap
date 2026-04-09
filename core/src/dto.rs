@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 绝对纯净的、跨端通用的 DTO
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")] // 照顾 TS 和 Kotlin 的命名习惯
 pub struct NoteDTO {
     pub id: String, // Uuid 转成标准的 36 位字符串
@@ -12,14 +12,14 @@ pub struct NoteDTO {
     pub deleted: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineNotesPageDTO {
     pub notes: Vec<NoteDTO>,
     pub next_cursor: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineSessionDTO {
     pub started_at: u64,
@@ -28,7 +28,7 @@ pub struct TimelineSessionDTO {
     pub notes: Vec<NoteDTO>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineSessionsPageDTO {
     pub sessions: Vec<TimelineSessionDTO>,

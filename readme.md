@@ -32,7 +32,7 @@
 
 ## 工程架构
 
-本项目采用 Monorepo 组织结构。当前 Rust workspace 成员为 `core`、`coreffi`、`cli`、`desktop`、`xtask`；`android` 与 `web` 分别由 Gradle 与 Vite 管理。
+本项目采用 Monorepo 组织结构。当前 Rust workspace 成员为 `core`、`coreffi`、`cli`、`desktop`、`xtask`、`web`；`android` 由 Gradle 管理。
 
 * `core/`：Rust 逻辑内核。负责纯 Rust KV 数据落盘、不可变 DAG 状态机维护、读时过滤渲染算法以及同步协议。
 * `coreffi/`：Rust FFI 封装层。通过 UniFFI 将 `core` 暴露给原生平台调用。
@@ -40,7 +40,7 @@
 * `desktop/`：Rust 桌面端 UI。
 * `android/`：Kotlin 原生应用。Gradle 在构建期编译 `coreffi`，并接入自动生成的 UniFFI Kotlin 绑定。
 * `xtask/`：Rust 工具目标。当前主要用于从 `coreffi/src/synap.udl` 生成 Android 侧 UniFFI Kotlin 绑定。
-* `web/`：Svelte + Vite 前端实验壳层。当前不在 Rust workspace 中。
+* `web/`：Leptos + Axum RS 全栈前端。使用 `cargo-leptos` 构建。
 
 ## 构建与运行
 
@@ -71,12 +71,16 @@ Android 的 `preBuild` 会先执行两件事：
 * 编译 `coreffi` 对应的 Android 动态库。
 * 通过 `cargo run -p xtask -- gen-uniffi-kotlin ...` 生成 Kotlin UniFFI 绑定到 `build/generated/...`。
 
-启动 Web 实验壳层：
+启动 Web 全栈应用：
 
 ```bash
-cd web
-pnpm install
-pnpm dev
+cargo leptos watch --workspace -p web
+```
+
+或运行 Release 版本：
+
+```bash
+cargo leptos build --release -p web
 ```
 
 ## 仓库约定

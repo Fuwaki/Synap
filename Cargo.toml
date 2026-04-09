@@ -4,6 +4,7 @@ members = [
     "coreffi",
     "cli",
     "desktop",
-    "xtask"
+    "xtask",
+    "web",
 ]
 resolver = "2"

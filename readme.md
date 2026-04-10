@@ -83,6 +83,24 @@ cargo leptos watch --workspace -p web
 cargo leptos build --release -p web
 ```
 
+使用 Docker 构建并运行 Web 服务：
+
+```bash
+docker build -f web/Dockerfile -t synap-web .
+docker run -d \
+  --name synap-web \
+  -p 8080:8080 \
+  -v synap-data:/data \
+  synap-web
+```
+
+说明：
+
+* `web/Dockerfile` 需要从仓库根目录构建，因为 `web` 依赖了工作区内的 `core` crate。
+* 容器默认监听 `0.0.0.0:8080`。
+* Web 服务通过 `SYNAP_WEB_DB` 读取数据库路径；镜像默认值为 `/data/synap-web.redb`，因此建议挂载 `/data` 做持久化。
+* GitHub Actions 会在普通提交与 PR 上执行镜像构建校验，并在 tag 上发布 `ghcr.io/<owner>/synap-web` 镜像。
+
 ## 仓库约定
 
 这个仓库是单仓多端，但不要求每个 feature 一次性完成全平台适配。主线维护的是“共享核心 + 当前正在维护的平台集合”，不是“所有壳层永远同步完成”。约定如下：

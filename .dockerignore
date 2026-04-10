@@ -1,0 +1,15 @@
+*
+!Cargo.toml
+!Cargo.lock
+!cli/
+!cli/**
+!core/
+!core/**
+!coreffi/
+!coreffi/**
+!desktop/
+!desktop/**
+!web/
+!web/**
+!xtask/
+!xtask/**

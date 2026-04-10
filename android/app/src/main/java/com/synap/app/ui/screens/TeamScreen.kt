@@ -2,6 +2,7 @@ package com.synap.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,14 +11,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.synap.app.R
+import kotlinx.coroutines.CancellationException
 
 // 1. 定义数据结构（增加可选的 platformNameRes 用于多语言支持）
 data class SocialLink(val platformName: String, val platformNameRes: Int? = null, val url: String)
@@ -46,7 +53,31 @@ val creativeTeamList = listOf(
 fun TeamScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
 
+    // ========== 预返回手势核心状态 ==========
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { backEvent ->
+                backProgress = backEvent.progress // 收集滑动进度
+            }
+            onNavigateBack() // 手指松开且决定返回时，触发导航
+        } catch (e: CancellationException) {
+            backProgress = 0f // 用户取消了返回手势，重置进度
+        }
+    }
+
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            // ========== 应用预返回手势的视觉形变 ==========
+            .graphicsLayer {
+                val scale = 1f - (0.1f * backProgress) // 页面最多缩小到 90%
+                scaleX = scale
+                scaleY = scale
+                shape = RoundedCornerShape(32.dp * backProgress) // 随进度增加圆角
+                clip = true
+            },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.creative_team)) },

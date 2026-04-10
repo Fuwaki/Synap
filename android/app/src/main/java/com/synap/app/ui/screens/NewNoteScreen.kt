@@ -101,6 +101,11 @@ import com.synap.app.R
 import com.synap.app.ui.viewmodel.EditorMode
 import com.synap.app.ui.viewmodel.EditorUiState
 import kotlinx.coroutines.delay
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.CancellationException
+
 
 // ==================== 工具：获取隐藏符号的精确区间 ====================
 fun getMarkdownTokenRanges(text: String): List<IntRange> {
@@ -378,9 +383,31 @@ fun NewNoteScreen(
     // ========== 只有新建笔记时，才激活扩展动画 ==========
     val isCreateMode = uiState.mode == EditorMode.Create
 
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { backEvent ->
+                backProgress = backEvent.progress // 收集滑动进度 (0.0 ~ 1.0)
+            }
+            // 手指松开且决定返回时，触发导航
+            onNavigateBack()
+        } catch (e: CancellationException) {
+            // 用户取消了返回手势，重置进度
+            backProgress = 0f
+        }
+    }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                val scale = 1f - (0.1f * backProgress)
+                scaleX = scale
+                scaleY = scale
+                shape = RoundedCornerShape(32.dp * backProgress) // 随进度增加圆角
+                clip = true
+            }
             .let {
                 if (isCreateMode && sharedTransitionScope != null && animatedVisibilityScope != null) {
                     with(sharedTransitionScope) {

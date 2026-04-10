@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentWidth // 新增导入
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -51,6 +51,7 @@ fun HomeSessionFeed(
     onOpenNote: (String) -> Unit,
     onToggleDeleted: (Note) -> Unit,
     onReplyToNote: (String, String) -> Unit,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val sessionHeaderIndexes = remember(sessions) { buildSessionHeaderIndexes(sessions) }
     val markers = remember(sessions) {
@@ -142,7 +143,7 @@ fun HomeSessionFeed(
                 start = 16.dp,
                 top = 8.dp,
                 end = 16.dp,
-                bottom = 96.dp,
+                bottom = 96.dp + bottomInset,
             ),
             verticalItemSpacing = 12.dp,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -211,10 +212,10 @@ fun HomeSessionFeed(
                         .coerceIn(0f, axisLayout.totalWeight)
                 },
                 modifier = Modifier
-                    .align(Alignment.CenterEnd) // 第一步：容器锚定在父组件的右侧
+                    .align(Alignment.CenterEnd)
                     .fillMaxHeight()
-                    .wrapContentWidth(align = Alignment.End) // 第二步：核心修复，强制时间轴自身变宽时向左侧延展，确保右侧定死不动
-                    .padding(end = 4.dp, top = 12.dp, bottom = 12.dp),
+                    .wrapContentWidth(align = Alignment.End)
+                    .padding(end = 4.dp, top = 12.dp, bottom = 12.dp + bottomInset),
             )
         }
     }

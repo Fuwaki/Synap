@@ -11,9 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,7 +29,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
@@ -88,12 +84,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.synap.app.R
-import com.synap.app.ui.components.HomeFilterBar
 import com.synap.app.ui.components.HomeNoteFeed
 import com.synap.app.ui.components.HomeSessionFeed
 import com.synap.app.ui.model.Note
-import com.synap.app.ui.model.TimelineSessionGroup
-import com.synap.app.ui.theme.MyApplicationTheme
 import com.synap.app.ui.viewmodel.HomeUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -159,7 +152,6 @@ fun HomeScreen(
 
     var showFeedMenu by remember { mutableStateOf(false) }
 
-    // 控制多选删除确认弹窗
     var showMultiDeleteDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) {
@@ -314,12 +306,11 @@ fun HomeScreen(
             }
     }
 
-    // 多选删除确认弹窗
     if (showMultiDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showMultiDeleteDialog = false },
             title = { Text("确认删除") },
-            text = { Text("是否确认删除选择的${selectedNoteIds.size}条笔记？") },
+            text = { Text("是否确认删除选择的 ${selectedNoteIds.size} 条笔记？") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -439,6 +430,19 @@ fun HomeScreen(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    // ========== 给首页的搜索框打上共享 Tag ==========
+                                    .let {
+                                        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                                            with(sharedTransitionScope) {
+                                                it.sharedBounds(
+                                                    sharedContentState = rememberSharedContentState(key = "search_bar_transform"),
+                                                    animatedVisibilityScope = animatedVisibilityScope
+                                                )
+                                            }
+                                        } else {
+                                            it
+                                        }
+                                    }
                                     .clip(MaterialTheme.shapes.extraLarge)
                                     .clickable { onOpenSearch() },
                                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -555,7 +559,7 @@ fun HomeScreen(
                             }
 
                             IconButton(
-                                onClick = { showMultiDeleteDialog = true }, // 触发弹窗而不是直接删除
+                                onClick = { showMultiDeleteDialog = true },
                                 enabled = selectedNoteIds.isNotEmpty()
                             ) {
                                 Icon(
@@ -574,7 +578,7 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -696,11 +700,13 @@ fun HomeScreen(
                                         }
                                     },
                                     onReplyToNote = onReplyToNote,
+                                    bottomInset = innerPadding.calculateBottomPadding()
                                 )
                             } else {
                                 HomeNoteFeed(
                                     notes = displayNotes,
                                     state = noteGridState,
+                                    contentPadding = innerPadding,
                                     isSelectionMode = isSelectionMode,
                                     selectedNoteIds = selectedNoteIds,
                                     onToggleSelection = ::toggleSelection,

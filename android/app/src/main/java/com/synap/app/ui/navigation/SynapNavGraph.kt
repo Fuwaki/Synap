@@ -67,7 +67,6 @@ fun SynapNavGraph(
 
     val startDestination = remember { if (hasSeenTutorial) "home" else "tutorial" }
 
-    // ==================== 核心修改：在最外层包裹共享元素动画布局 ====================
     SharedTransitionLayout {
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
@@ -113,13 +112,19 @@ fun SynapNavGraph(
                         onToggleTagFilter = viewModel::toggleTag,
                         onToggleUntaggedFilter = viewModel::toggleUntagged,
                         onToggleAllTags = viewModel::toggleAllTags,
-                        // ========== 注入共享动画作用域 ==========
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@composable
                     )
                 }
 
-                composable("search") {
+                composable(
+                    route = "search",
+                    // ========== 覆盖这里的默认侧滑，避免和展开动画冲突 ==========
+                    enterTransition = { fadeIn() },
+                    exitTransition = { fadeOut() },
+                    popEnterTransition = { fadeIn() },
+                    popExitTransition = { fadeOut() },
+                ) {
                     val viewModel: HomeViewModel = hiltViewModel()
                     val uiState by viewModel.uiState.collectAsState()
                     SearchScreen(
@@ -129,7 +134,9 @@ fun SynapNavGraph(
                         onClearSearch = viewModel::clearSearch,
                         onNavigateBack = { navController.popBackStack() },
                         onOpenNote = { noteId -> navController.navigate(detailRoute(noteId)) },
-                        onToggleDeleted = viewModel::toggleDeleted
+                        onToggleDeleted = viewModel::toggleDeleted,
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        animatedVisibilityScope = this@composable
                     )
                 }
 
@@ -235,7 +242,6 @@ fun SynapNavGraph(
                         onAddTag = viewModel::addTag,
                         onRemoveTag = viewModel::removeTag,
                         onSave = viewModel::save,
-                        // ========== 注入共享动画作用域 ==========
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@composable
                     )

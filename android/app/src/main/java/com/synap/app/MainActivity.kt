@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
+import androidx.activity.enableEdgeToEdge
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -28,7 +29,8 @@ class MainActivity : AppCompatActivity() {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // 记录启动时间
+        enableEdgeToEdge()
+
         val startTime = System.currentTimeMillis()
         val timeout = 100L
 

@@ -1,6 +1,7 @@
 <resources>
     <string name="home">主页</string>
     <string name="delete">删除</string>
+    <string name="cancel">取消</string>
     <string name="edit">编辑</string>
     <string name="reply">回复</string>
     <string name="retry">重试</string>
@@ -8,7 +9,7 @@
     <string name="back">返回</string>
     <string name="clear">清空</string>
     <string name="selected">已选择</string>
-    <string name="search_placeholder">搜索笔记、标签、片段...</string>
+    <string name="search_placeholder">搜索笔记、标签...</string>
     <string name="search_empty_input_hint">输入关键词开始搜索</string>
     <string name="search_no_results">没有找到匹配的笔记</string>
     <string name="select_language">选择语言</string>
@@ -18,7 +19,7 @@
     <string name="font_serif">衬线字体</string>
     <string name="font_weight">字重</string>
     <string name="current_font_weight">笔记文字字重 (当前为 %1$d)</string>
-    <string name="font_weight_hint">*部分字体的字重调节可能不会全部生效</string>
+    <string name="font_weight_hint">*部分字体下的字重调节可能不会全部生效</string>
     <string name="font_size">字号</string>
     <string name="current_font_size">笔记文字大小 (当前为 %1$dsp)</string>
     <string name="restore_default">恢复默认</string>
@@ -56,19 +57,19 @@
     <string name="home_filter_delete_undelete">正常</string>
     <string name="home_filter_delete_delete">已删除</string>
     <string name="trash_title">回收站</string>
-    <string name="trash_restore_hint">这里存放你已经删掉的笔记，向右轻扫即可恢复。</string>
+    <string name="trash_restore_hint">这里存放你已经删掉的笔记，向右轻扫笔记卡片即可恢复。</string>
     <string name="trash_empty">回收站为空</string>
     <string name="trash_empty_hint">当你删除笔记后，被删掉的笔记会出现在这里。</string>
     <string name="edit_title_creat">新建笔记</string>
     <string name="edit_title_reply">回复笔记</string>
     <string name="edit_title_edit">编辑笔记</string>
-    <string name="edit_placeholder">在此输入正文内容……</string>
+    <string name="edit_placeholder">在此输入正文内容</string>
     <string name="edit_tag_delete">删除标签</string>
     <string name="edit_tag_add">添加标签</string>
     <string name="edit_tag_placeholder">在此输入标签文字</string>
     <string name="edit_tag_check">确认添加</string>
     <string name="edit_tag_recommend_title">推荐标签</string>
-    <string name="home_search_title">搜索笔记、标签、片段...</string>
+    <string name="home_search_title">在此输入搜索内容</string>
     <string name="home_tagbar_none">无标签</string>
     <string name="home_tagbar_all">全部标签</string>
     <string name="home_creatnote">创建笔记</string>
@@ -92,8 +93,5 @@
     <string name="creative_team">创作团队</string>
     <string name="bilibili">哔哩哔哩</string>
     <string name="tiktok">抖音</string>
-    <string name="RED">小红书</string>
-    <string name="role_backend">后端开发</string>
-    <string name="role_frontend_ui">前端 &amp; UI 设计</string>
     <string name="edit_reply_context_title">接续这条思路</string>
 </resources>

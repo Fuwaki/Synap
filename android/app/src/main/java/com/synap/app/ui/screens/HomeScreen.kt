@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewStream
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -120,7 +121,6 @@ fun HomeScreen(
     onToggleTagFilter: (String) -> Unit,
     onToggleUntaggedFilter: () -> Unit,
     onToggleAllTags: () -> Unit,
-    // ===== 为原生共享动画新增的生命周期作用域 (默认null以防报错) =====
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -158,6 +158,9 @@ fun HomeScreen(
     var selectedNoteIds by rememberSaveable { mutableStateOf(setOf<String>()) }
 
     var showFeedMenu by remember { mutableStateOf(false) }
+
+    // 控制多选删除确认弹窗
+    var showMultiDeleteDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) {
         isSelectionMode = false
@@ -309,6 +312,30 @@ fun HomeScreen(
                     onLoadMore()
                 }
             }
+    }
+
+    // 多选删除确认弹窗
+    if (showMultiDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showMultiDeleteDialog = false },
+            title = { Text("确认删除") },
+            text = { Text("是否确认删除选择的${selectedNoteIds.size}条笔记？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMultiDeleteDialog = false
+                        deleteSelectedNotes()
+                    }
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultiDeleteDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -480,7 +507,6 @@ fun HomeScreen(
                             onClick = onComposeNote,
                             modifier = Modifier
                                 .size(56.dp)
-                                // ==================== 原生全屏扩展动画绑定 ====================
                                 .let {
                                     if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                                         with(sharedTransitionScope) {
@@ -529,7 +555,7 @@ fun HomeScreen(
                             }
 
                             IconButton(
-                                onClick = { deleteSelectedNotes() },
+                                onClick = { showMultiDeleteDialog = true }, // 触发弹窗而不是直接删除
                                 enabled = selectedNoteIds.isNotEmpty()
                             ) {
                                 Icon(

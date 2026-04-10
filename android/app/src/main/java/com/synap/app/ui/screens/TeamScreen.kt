@@ -17,26 +17,26 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.synap.app.R // 导入 R 文件
+import com.synap.app.R
 
-// 1. 定义数据结构，新增 roleResId 用于多语言职位
-data class SocialLink(val platformName: String, val url: String)
-data class TeamMember(val name: String, val roleResId: Int, val socialLinks: List<SocialLink>)
+// 1. 定义数据结构（增加可选的 platformNameRes 用于多语言支持）
+data class SocialLink(val platformName: String, val platformNameRes: Int? = null, val url: String)
+data class TeamMember(val name: String, val socialLinks: List<SocialLink>)
 
-// 2. 团队成员列表（已填入指定信息）
+// 2. 团队成员列表
 val creativeTeamList = listOf(
     TeamMember(
         name = "Fuwaki",
-        roleResId = R.string.role_backend,
         socialLinks = listOf(
-            SocialLink("GitHub", "https://github.com/Fuwaki")
+            // 为 bilibili 绑定字符串资源 ID，支持多语言适配
+            SocialLink("bilibili", R.string.bilibili, "https://space.bilibili.com/488218512"),
+            SocialLink("GitHub", null, "https://github.com/Fuwaki")
         )
     ),
     TeamMember(
         name = "尧尧切克Now",
-        roleResId = R.string.role_frontend_ui,
         socialLinks = listOf(
-            SocialLink("GitHub", "https://github.com/yyckn")
+            SocialLink("GitHub", null, "https://github.com/yyckn")
         )
     )
 )
@@ -81,21 +81,14 @@ fun TeamScreen(onNavigateBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // 左侧：姓名与职位副标题
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = member.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = stringResource(id = member.roleResId),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        // 左侧：仅保留姓名
+                        Text(
+                            text = member.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
 
                         Spacer(modifier = Modifier.width(16.dp))
 
@@ -116,7 +109,9 @@ fun TeamScreen(onNavigateBack: () -> Unit) {
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                     modifier = Modifier.height(32.dp)
                                 ) {
-                                    Text(text = link.platformName, fontSize = 12.sp)
+                                    // 优先使用 stringResource 翻译，如果没有绑定资源 ID 则显示原始 platformName
+                                    val platformText = link.platformNameRes?.let { stringResource(it) } ?: link.platformName
+                                    Text(text = platformText, fontSize = 12.sp)
                                 }
                             }
                         }

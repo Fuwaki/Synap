@@ -33,6 +33,7 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,7 +55,6 @@ import com.synap.app.LocalNoteFontWeight
 import com.synap.app.LocalNoteTextSize
 import com.synap.app.ui.model.Note
 import com.synap.app.ui.util.formatNoteTime
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // ==================== 共享 Markdown 渲染引擎 ====================
@@ -197,27 +197,33 @@ fun NoteCardItem(
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { dismissValue ->
             if (isSelectionMode) return@rememberSwipeToDismissBoxState false // 多选模式下禁用滑动
+            // 仅负责状态放行，绝不在这里执行业务逻辑！
             when (dismissValue) {
-                SwipeToDismissBoxValue.StartToEnd -> {
-                    scope.launch {
-                        delay(150)
-                        onToggleDeleted()
-                    }
-                    false
-                }
-                SwipeToDismissBoxValue.EndToStart -> {
-                    if (!note.isDeleted) {
-                        scope.launch {
-                            delay(150)
-                            onReply()
-                        }
-                    }
-                    false
-                }
-                SwipeToDismissBoxValue.Settled -> false
+                SwipeToDismissBoxValue.StartToEnd -> true
+                SwipeToDismissBoxValue.EndToStart -> !note.isDeleted
+                SwipeToDismissBoxValue.Settled -> true
             }
         },
     )
+
+    // 核心修复逻辑：监听真实的 currentValue。它只会在用户“彻底松手并划过去动画完成”之后才更新
+    LaunchedEffect(dismissState.currentValue) {
+        when (dismissState.currentValue) {
+            SwipeToDismissBoxValue.StartToEnd -> {
+                onToggleDeleted()
+                // 动作触发后，瞬间将卡片状态重置回中心
+                dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+            }
+            SwipeToDismissBoxValue.EndToStart -> {
+                if (!note.isDeleted) {
+                    onReply()
+                }
+                // 动作触发后，瞬间将卡片状态重置回中心
+                dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+            }
+            SwipeToDismissBoxValue.Settled -> {}
+        }
+    }
 
     SwipeToDismissBox(
         state = dismissState,

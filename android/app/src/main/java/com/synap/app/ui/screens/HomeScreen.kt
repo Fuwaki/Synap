@@ -3,6 +3,9 @@ package com.synap.app.ui.screens
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -82,7 +85,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.synap.app.R
 import com.synap.app.ui.components.HomeFilterBar
@@ -101,7 +103,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 import androidx.compose.runtime.saveable.rememberSaveable
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
@@ -118,6 +120,9 @@ fun HomeScreen(
     onToggleTagFilter: (String) -> Unit,
     onToggleUntaggedFilter: () -> Unit,
     onToggleAllTags: () -> Unit,
+    // ===== 为原生共享动画新增的生命周期作用域 (默认null以防报错) =====
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("synap_prefs", Context.MODE_PRIVATE) }
@@ -126,16 +131,13 @@ fun HomeScreen(
     val sessionGridState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
 
-    // 提取当前是否处于瀑布流模式 (Waterfall 对应 isFilterPanelOpen = true)
     val isFeed = !uiState.showSessionFeed
 
-    // 初始化时读取本地存储的偏好设置
     LaunchedEffect(Unit) {
-        val savedMode = prefs.getBoolean("is_waterfall_mode", true) // 默认瀑布流
+        val savedMode = prefs.getBoolean("is_waterfall_mode", true)
         onSetFilterPanelOpen(savedMode)
     }
 
-    // 切换模式并保存至本地
     fun switchFeedMode(waterfall: Boolean) {
         prefs.edit().putBoolean("is_waterfall_mode", waterfall).apply()
         onSetFilterPanelOpen(waterfall)
@@ -347,7 +349,6 @@ fun HomeScreen(
                                 }
                             }
 
-                            // --- 切换布局垂直菜单 ---
                             Box {
                                 IconButton(onClick = { showFeedMenu = true }) {
                                     Icon(
@@ -477,7 +478,21 @@ fun HomeScreen(
 
                         FloatingActionButton(
                             onClick = onComposeNote,
-                            modifier = Modifier.size(56.dp)
+                            modifier = Modifier
+                                .size(56.dp)
+                                // ==================== 原生全屏扩展动画绑定 ====================
+                                .let {
+                                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                                        with(sharedTransitionScope) {
+                                            it.sharedBounds(
+                                                sharedContentState = rememberSharedContentState(key = "fab_to_new_note"),
+                                                animatedVisibilityScope = animatedVisibilityScope
+                                            )
+                                        }
+                                    } else {
+                                        it
+                                    }
+                                }
                         ) {
                             Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
                         }
@@ -743,8 +758,8 @@ fun HomeScreen(
             }
         }
     }
-
 }
+
 
 @Composable
 fun WavyProgressIndicator(

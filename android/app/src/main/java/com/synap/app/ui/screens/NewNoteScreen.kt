@@ -1,6 +1,9 @@
 package com.synap.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -99,7 +102,7 @@ import com.synap.app.ui.viewmodel.EditorMode
 import com.synap.app.ui.viewmodel.EditorUiState
 import kotlinx.coroutines.delay
 
-// ==================== 工具：获取隐藏符号的精确区间，用于退格保护 ====================
+// ==================== 工具：获取隐藏符号的精确区间 ====================
 fun getMarkdownTokenRanges(text: String): List<IntRange> {
     val ranges = mutableListOf<IntRange>()
     fun addTokens(regex: Regex) {
@@ -124,7 +127,7 @@ fun getMarkdownTokenRanges(text: String): List<IntRange> {
     return ranges
 }
 
-// ==================== 自定义 Markdown 视觉渲染引擎 (隐藏语法符) ====================
+// ==================== 自定义 Markdown 视觉渲染引擎 ====================
 class MarkdownVisualTransformation(
     private val primaryColor: Color,
     private val highlightColor: Color,
@@ -226,7 +229,6 @@ class MarkdownVisualTransformation(
 
 enum class EditorSubMenu { NONE, HEADING, QUOTE, LIST }
 
-// ==================== 工具栏按钮组件 (修复上下文报错) ====================
 @Composable
 fun EditorIconButton(
     isActive: Boolean,
@@ -246,7 +248,7 @@ fun EditorIconButton(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun NewNoteScreen(
     uiState: EditorUiState,
@@ -255,6 +257,9 @@ fun NewNoteScreen(
     onAddTag: (String) -> Unit,
     onRemoveTag: (Int) -> Unit,
     onSave: () -> Unit,
+    // ===== 为原生共享动画新增的生命周期作用域 (默认null以防报错) =====
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     var tagInputText by remember { mutableStateOf("") }
     var isTagInputVisible by remember { mutableStateOf(false) }
@@ -370,7 +375,24 @@ fun NewNoteScreen(
         onContentChange(newText)
     }
 
+    // ========== 只有新建笔记时，才激活扩展动画 ==========
+    val isCreateMode = uiState.mode == EditorMode.Create
+
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .let {
+                if (isCreateMode && sharedTransitionScope != null && animatedVisibilityScope != null) {
+                    with(sharedTransitionScope) {
+                        it.sharedBounds(
+                            sharedContentState = rememberSharedContentState(key = "fab_to_new_note"),
+                            animatedVisibilityScope = animatedVisibilityScope
+                        )
+                    }
+                } else {
+                    it
+                }
+            },
         topBar = {
             TopAppBar(
                 title = {

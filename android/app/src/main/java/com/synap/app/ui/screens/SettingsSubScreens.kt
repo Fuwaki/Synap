@@ -10,6 +10,8 @@ fun TypographySettingsContainer(
     onFontWeightChange: (Int) -> Unit,
     noteTextSize: Float,
     onNoteTextSizeChange: (Float) -> Unit,
+    noteLineSpacing: Float, // --- 补充行距参数 ---
+    onNoteLineSpacingChange: (Float) -> Unit, // --- 补充行距回调 ---
     onNavigateBack: () -> Unit
 ) {
     TypographySettingsScreen(
@@ -19,6 +21,8 @@ fun TypographySettingsContainer(
         onFontWeightChange = onFontWeightChange,
         noteTextSize = noteTextSize,
         onNoteTextSizeChange = onNoteTextSizeChange,
+        noteLineSpacing = noteLineSpacing, // --- 透传给内部组件 ---
+        onNoteLineSpacingChange = onNoteLineSpacingChange, // --- 透传给内部组件 ---
         onNavigateBack = onNavigateBack
     )
 }

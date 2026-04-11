@@ -44,6 +44,7 @@ import com.synap.app.ui.viewmodel.AppSessionViewModel
 val LocalNoteTextSize = compositionLocalOf { 16.sp }
 val LocalNoteFontFamily = compositionLocalOf { FontFamily.SansSerif }
 val LocalNoteFontWeight = compositionLocalOf { FontWeight.Normal }
+val LocalNoteLineSpacing = compositionLocalOf { 1.5f } // --- 新增行距 Local ---
 
 @Composable
 fun SynapApp(activity: MainActivity?) {
@@ -76,6 +77,7 @@ fun SynapApp(activity: MainActivity?) {
     }
 
     var noteTextSize by remember { mutableFloatStateOf(prefs.getFloat("noteTextSize", 16f)) }
+    var noteLineSpacing by remember { mutableFloatStateOf(prefs.getFloat("noteLineSpacing", 1.5f)) } // --- 新增行距状态 ---
     var currentFontFamily by remember { mutableStateOf(prefs.getString("fontFamily", "SansSerif") ?: "SansSerif") }
     var currentFontWeight by remember { mutableIntStateOf(prefs.getInt("fontWeight", 400)) }
 
@@ -102,7 +104,8 @@ fun SynapApp(activity: MainActivity?) {
     CompositionLocalProvider(
         LocalNoteTextSize provides noteTextSize.sp,
         LocalNoteFontFamily provides actualFontFamily,
-        LocalNoteFontWeight provides actualFontWeight
+        LocalNoteFontWeight provides actualFontWeight,
+        LocalNoteLineSpacing provides noteLineSpacing // --- 下发行距配置 ---
     ) {
         MyApplicationTheme(darkTheme = isDarkTheme, dynamicColor = supportsMonet && useMonet) {
             val currentScheme = MaterialTheme.colorScheme
@@ -161,6 +164,7 @@ fun SynapApp(activity: MainActivity?) {
                             currentFontFamily = currentFontFamily, onFontFamilyChange = { currentFontFamily = it; prefs.edit().putString("fontFamily", it).apply() },
                             currentFontWeight = currentFontWeight, onFontWeightChange = { currentFontWeight = it; prefs.edit().putInt("fontWeight", it).apply() },
                             noteTextSize = noteTextSize, onNoteTextSizeChange = { noteTextSize = it; prefs.edit().putFloat("noteTextSize", it).apply() },
+                            noteLineSpacing = noteLineSpacing, onNoteLineSpacingChange = { noteLineSpacing = it; prefs.edit().putFloat("noteLineSpacing", it).apply() }, // --- 传递行距属性与持久化 ---
                             hasSeenTutorial = hasSeenTutorial, onTutorialFinished = { hasSeenTutorial = true; prefs.edit().putBoolean("hasSeenTutorial", true).apply() },
                             databaseActivity = activity,
                         )

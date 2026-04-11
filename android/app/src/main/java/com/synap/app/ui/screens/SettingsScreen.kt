@@ -2,6 +2,7 @@ package com.synap.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SmartButton
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
@@ -51,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,12 +61,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.synap.app.R
+import java.util.concurrent.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,7 +96,33 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
 
+    // ========== 预返回手势核心状态 ==========
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { backEvent ->
+                backProgress = backEvent.progress // 收集滑动进度 (0.0 ~ 1.0)
+            }
+            // 手指松开且决定返回时，触发导航
+            onNavigateBack()
+        } catch (e: CancellationException) {
+            // 用户取消了返回手势，重置进度
+            backProgress = 0f
+        }
+    }
+
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            // ========== 应用预返回手势的视觉形变 ==========
+            .graphicsLayer {
+                val scale = 1f - (0.1f * backProgress) // 页面最多缩小到 90%
+                scaleX = scale
+                scaleY = scale
+                shape = RoundedCornerShape(32.dp * backProgress) // 随进度增加圆角
+                clip = true
+            },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.settings)) },
@@ -110,6 +141,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            // ==================== 1. 深色模式 ====================
             Text(
                 text = stringResource(R.string.dark_mode),
                 style = MaterialTheme.typography.titleSmall,
@@ -156,6 +188,7 @@ fun SettingsScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
 
+            // ==================== 2. 外观 ====================
             Text(
                 text = stringResource(R.string.appearance),
                 style = MaterialTheme.typography.titleSmall,
@@ -308,12 +341,22 @@ fun SettingsScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
 
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-
+            // ==================== 3. 无障碍 ====================
+            Text(
+                text = "无障碍",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
                 var showHandednessMenu by remember { mutableStateOf(false) }
                 Box(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -370,9 +413,49 @@ fun SettingsScreen(
                         )
                     }
                 }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+
+                // --- 纯 UI 预留：显示按钮上的文字 ---
+                var showButtonTextUI by remember { mutableStateOf(false) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showButtonTextUI = !showButtonTextUI }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.SmartButton,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(end = 16.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "显示按钮上的文字",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "手机上打开此按钮可能会造成无法显示所有内容。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = showButtonTextUI,
+                        onCheckedChange = { showButtonTextUI = it },
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(24.dp))
 
+            // ==================== 4. 备份与恢复 ====================
             Text(
                 text = stringResource(R.string.backup_and_restore),
                 style = MaterialTheme.typography.titleSmall,
@@ -478,6 +561,7 @@ fun SettingsScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
 
+            // ==================== 5. 关于 ====================
             Text(
                 text = stringResource(R.string.about),
                 style = MaterialTheme.typography.titleSmall,

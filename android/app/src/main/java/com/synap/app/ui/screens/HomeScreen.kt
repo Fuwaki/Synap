@@ -1,7 +1,11 @@
 package com.synap.app.ui.screens
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -35,7 +39,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -43,9 +46,14 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.ViewStream
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -75,9 +83,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.synap.app.R
 import com.synap.app.ui.components.HomeFilterBar
@@ -96,7 +104,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 import androidx.compose.runtime.saveable.rememberSaveable
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
@@ -113,10 +121,32 @@ fun HomeScreen(
     onToggleTagFilter: (String) -> Unit,
     onToggleUntaggedFilter: () -> Unit,
     onToggleAllTags: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("synap_prefs", Context.MODE_PRIVATE) }
+
     val noteGridState = rememberLazyStaggeredGridState()
     val sessionGridState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
+
+    val isFeed = !uiState.showSessionFeed
+
+    LaunchedEffect(Unit) {
+        val savedMode = prefs.getBoolean("is_waterfall_mode", true)
+        onSetFilterPanelOpen(savedMode)
+    }
+
+    fun switchFeedMode(waterfall: Boolean) {
+        prefs.edit().putBoolean("is_waterfall_mode", waterfall).apply()
+        onSetFilterPanelOpen(waterfall)
+        if (waterfall) {
+            scope.launch { noteGridState.animateScrollToItem(0) }
+        } else {
+            scope.launch { sessionGridState.animateScrollToItem(0) }
+        }
+    }
 
     var deletedNoteToUndo by remember { mutableStateOf<Note?>(null) }
     var undoProgress by remember { mutableFloatStateOf(1f) }
@@ -126,6 +156,11 @@ fun HomeScreen(
 
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     var selectedNoteIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+
+    var showFeedMenu by remember { mutableStateOf(false) }
+
+    // 控制多选删除确认弹窗
+    var showMultiDeleteDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) {
         isSelectionMode = false
@@ -138,7 +173,6 @@ fun HomeScreen(
         } else {
             selectedNoteIds + noteId
         }
-        // 删除了这里的 if (selectedNoteIds.isEmpty()) 自动退出逻辑
     }
 
     fun finalizePendingDelete(note: Note) {
@@ -200,8 +234,6 @@ fun HomeScreen(
             }
         }
     }
-
-    var isTagsExpanded by rememberSaveable { mutableStateOf(false) }
 
     val displayNotes = remember(uiState.notes, pendingDeleteNoteIds) {
         uiState.notes
@@ -282,6 +314,30 @@ fun HomeScreen(
             }
     }
 
+    // 多选删除确认弹窗
+    if (showMultiDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showMultiDeleteDialog = false },
+            title = { Text("确认删除") },
+            text = { Text("是否确认删除选择的${selectedNoteIds.size}条笔记？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMultiDeleteDialog = false
+                        deleteSelectedNotes()
+                    }
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultiDeleteDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             Column {
@@ -317,6 +373,46 @@ fun HomeScreen(
                             ) {
                                 IconButton(onClick = onOpenSearch) {
                                     Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.content_desc_search))
+                                }
+                            }
+
+                            Box {
+                                IconButton(onClick = { showFeedMenu = true }) {
+                                    Icon(
+                                        imageVector = if (isFeed) Icons.Filled.ViewStream else Icons.Filled.ViewAgenda,
+                                        contentDescription = "Switch Feed View"
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showFeedMenu,
+                                    onDismissRequest = { showFeedMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_feed_waterfall)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Filled.ViewStream, contentDescription = null)
+                                        },
+                                        trailingIcon = {
+                                            if (isFeed) Icon(Icons.Filled.Check, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                        },
+                                        onClick = {
+                                            switchFeedMode(true)
+                                            showFeedMenu = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_feed_timeline)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Filled.ViewAgenda, contentDescription = null)
+                                        },
+                                        trailingIcon = {
+                                            if (!isFeed) Icon(Icons.Filled.Check, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                        },
+                                        onClick = {
+                                            switchFeedMode(false)
+                                            showFeedMenu = false
+                                        }
+                                    )
                                 }
                             }
 
@@ -390,7 +486,7 @@ fun HomeScreen(
                             enter = fadeIn(),
                             exit = fadeOut()
                         ) {
-                            ExtendedFloatingActionButton(
+                            FloatingActionButton(
                                 onClick = {
                                     scope.launch {
                                         if (isShowingSessionFeed) {
@@ -400,109 +496,31 @@ fun HomeScreen(
                                         }
                                     }
                                 },
-                                icon = { Icon(Icons.Filled.ArrowUpward, contentDescription = null) },
-                                text = { Text(text = stringResource(R.string.backtop)) },
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
+                            ) {
+                                Icon(Icons.Filled.VerticalAlignTop, contentDescription = stringResource(R.string.backtop))
+                            }
                         }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            AnimatedVisibility(
-                                visible = !uiState.isSearchMode,
-                                enter = fadeIn() + slideInHorizontally { it / 2 },
-                                exit = fadeOut() + slideOutHorizontally { it / 2 }
-                            ) {
-                                val isFeed = !uiState.showSessionFeed
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    shadowElevation = 6.dp,
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    modifier = Modifier.height(56.dp)
-                                ) {
-                                    Row {
-                                        Surface(
-                                            onClick = {
-                                                onSetFilterPanelOpen(true)
-                                                scope.launch { noteGridState.animateScrollToItem(0) }
-                                            },
-                                            shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp),
-                                            color = if (isFeed) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                            modifier = Modifier.fillMaxHeight()
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center,
-                                                modifier = Modifier.padding(horizontal = 16.dp)
-                                            ) {
-                                                AnimatedVisibility(visible = isFeed) {
-                                                    Row {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Check,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                    }
-                                                }
-                                                Text(
-                                                    text = stringResource(R.string.home_feed_waterfall),
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = if (isFeed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
+                        FloatingActionButton(
+                            onClick = onComposeNote,
+                            modifier = Modifier
+                                .size(56.dp)
+                                .let {
+                                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                                        with(sharedTransitionScope) {
+                                            it.sharedBounds(
+                                                sharedContentState = rememberSharedContentState(key = "fab_to_new_note"),
+                                                animatedVisibilityScope = animatedVisibilityScope
+                                            )
                                         }
-
-                                        Surface(
-                                            onClick = {
-                                                onSetFilterPanelOpen(false)
-                                                scope.launch { sessionGridState.animateScrollToItem(0) }
-                                            },
-                                            shape = RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp),
-                                            color = if (!isFeed) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                            modifier = Modifier.fillMaxHeight()
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center,
-                                                modifier = Modifier.padding(horizontal = 16.dp)
-                                            ) {
-                                                AnimatedVisibility(visible = !isFeed) {
-                                                    Row {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Check,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                    }
-                                                }
-                                                Text(
-                                                    text = stringResource(R.string.home_feed_timeline),
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = if (!isFeed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
+                                    } else {
+                                        it
                                     }
                                 }
-                            }
-
-                            FloatingActionButton(
-                                onClick = onComposeNote,
-                                modifier = Modifier.size(56.dp)
-                            ) {
-                                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
-                            }
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
                         }
                     }
                 }
@@ -537,7 +555,7 @@ fun HomeScreen(
                             }
 
                             IconButton(
-                                onClick = { deleteSelectedNotes() },
+                                onClick = { showMultiDeleteDialog = true }, // 触发弹窗而不是直接删除
                                 enabled = selectedNoteIds.isNotEmpty()
                             ) {
                                 Icon(
@@ -766,8 +784,8 @@ fun HomeScreen(
             }
         }
     }
-
 }
+
 
 @Composable
 fun WavyProgressIndicator(

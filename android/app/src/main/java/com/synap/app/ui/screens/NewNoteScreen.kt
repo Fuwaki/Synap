@@ -4,8 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +27,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,7 +45,7 @@ import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.FormatStrikethrough
 import androidx.compose.material.icons.filled.FormatUnderlined
-import androidx.compose.material.icons.filled.Title
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -53,27 +58,22 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.appcompat.widget.AppCompatEditText
 import android.text.Editable
@@ -86,9 +86,6 @@ import com.synap.app.ui.viewmodel.EditorUiState
 import io.noties.markwon.Markwon
 import io.noties.markwon.editor.MarkwonEditor
 import io.noties.markwon.editor.MarkwonEditorTextWatcher
-import kotlinx.coroutines.delay
-
-enum class EditorSubMenu { NONE, HEADING, LIST }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -104,11 +101,12 @@ fun NewNoteScreen(
 ) {
     var tagInputText by remember { mutableStateOf("") }
     var isTagInputVisible by remember { mutableStateOf(false) }
-    var tagInputHasFocus by remember { mutableStateOf(false) }
     val tagFocusRequester = remember { FocusRequester() }
 
     val isImeVisible = WindowInsets.isImeVisible
-    var activeSubMenu by remember { mutableStateOf(EditorSubMenu.NONE) }
+
+    // 控制工具栏展开和收起的状态
+    var isToolbarExpanded by remember { mutableStateOf(true) }
 
     // 引用原生的 EditText 实例以便从工具栏操作
     var nativeEditText by remember { mutableStateOf<AppCompatEditText?>(null) }
@@ -138,7 +136,6 @@ fun NewNoteScreen(
             val lineStart = layout.getLineStart(line)
             text.insert(lineStart, prefix)
         }
-        activeSubMenu = EditorSubMenu.NONE
     }
 
     Scaffold(
@@ -169,7 +166,7 @@ fun NewNoteScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
 
-                // 标签区域 (保持原样)
+                // 标签区域
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     if (isTagInputVisible) {
                         OutlinedTextField(
@@ -248,41 +245,73 @@ fun NewNoteScreen(
                 }
             }
 
-            // 底部工具栏
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding().padding(bottom = if (isImeVisible) 8.dp else 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            // 底部工具栏与展开收起按钮
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = if (isImeVisible) 8.dp else 24.dp)
             ) {
-                // 二级菜单 (H1-H4, List 类型)
-                AnimatedVisibility(visible = activeSubMenu != EditorSubMenu.NONE) {
-                    Surface(modifier = Modifier.padding(bottom = 12.dp), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHighest, shadowElevation = 6.dp) {
-                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), Arrangement.spacedBy(4.dp)) {
-                            when (activeSubMenu) {
-                                EditorSubMenu.HEADING -> {
-                                    (1..4).forEach { level -> TextButton(onClick = { applyLinePrefix("#".repeat(level) + " ") }) { Text("H$level") } }
-                                }
-                                EditorSubMenu.LIST -> {
-                                    TextButton(onClick = { applyLinePrefix("- ") }) { Text("无序") }
-                                    TextButton(onClick = { applyLinePrefix("1. ") }) { Text("有序") }
-                                }
-                                else -> {}
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 主工具栏 (带展开/收缩动画)
+                    AnimatedVisibility(
+                        visible = isToolbarExpanded,
+                        enter = fadeIn() + expandHorizontally(expandFrom = Alignment.End),
+                        exit = fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.End),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            shadowElevation = 6.dp
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val iconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                val textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = iconColor)
+
+                                // 将所有快捷操作整合至同一行
+                                IconButton(onClick = { applyLinePrefix("# ") }) { Text("H1", style = textStyle) }
+                                IconButton(onClick = { applyLinePrefix("## ") }) { Text("H2", style = textStyle) }
+                                IconButton(onClick = { applyStyle("**", "**") }) { Icon(Icons.Filled.FormatBold, null, tint = iconColor) }
+                                IconButton(onClick = { applyStyle("*", "*") }) { Icon(Icons.Filled.FormatItalic, null, tint = iconColor) }
+                                IconButton(onClick = { applyStyle("~~", "~~") }) { Icon(Icons.Filled.FormatStrikethrough, null, tint = iconColor) }
+                                IconButton(onClick = { applyStyle("<u>", "</u>") }) { Icon(Icons.Filled.FormatUnderlined, null, tint = iconColor) }
+                                IconButton(onClick = { applyStyle("==", "==") }) { Icon(Icons.Filled.FormatColorText, null, tint = iconColor) }
+                                IconButton(onClick = { applyLinePrefix("> ") }) { Icon(Icons.Filled.FormatQuote, null, tint = iconColor) }
+                                IconButton(onClick = { applyLinePrefix("- ") }) { Icon(Icons.Filled.FormatListBulleted, null, tint = iconColor) }
+                                IconButton(onClick = { applyLinePrefix("1. ") }) { Text("1.", style = textStyle) }
                             }
                         }
                     }
-                }
 
-                // 主工具栏
-                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 6.dp, modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                        val iconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        IconButton(onClick = { applyStyle("**", "**") }) { Icon(Icons.Filled.FormatBold, null, tint = iconColor) }
-                        IconButton(onClick = { applyStyle("*", "*") }) { Icon(Icons.Filled.FormatItalic, null, tint = iconColor) }
-                        IconButton(onClick = { applyStyle("~~", "~~") }) { Icon(Icons.Filled.FormatStrikethrough, null, tint = iconColor) }
-                        IconButton(onClick = { applyStyle("<u>", "</u>") }) { Icon(Icons.Filled.FormatUnderlined, null, tint = iconColor) }
-                        IconButton(onClick = { applyStyle("==", "==") }) { Icon(Icons.Filled.FormatColorText, null, tint = iconColor) }
-                        IconButton(onClick = { activeSubMenu = if (activeSubMenu == EditorSubMenu.HEADING) EditorSubMenu.NONE else EditorSubMenu.HEADING }) { Icon(Icons.Filled.Title, null, tint = iconColor) }
-                        IconButton(onClick = { applyLinePrefix("> ") }) { Icon(Icons.Filled.FormatQuote, null, tint = iconColor) }
-                        IconButton(onClick = { activeSubMenu = if (activeSubMenu == EditorSubMenu.LIST) EditorSubMenu.NONE else EditorSubMenu.LIST }) { Icon(Icons.Filled.FormatListBulleted, null, tint = iconColor) }
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // 独立的开关按钮
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        shadowElevation = 6.dp
+                    ) {
+                        IconButton(onClick = { isToolbarExpanded = !isToolbarExpanded }) {
+                            Icon(
+                                imageVector = if (isToolbarExpanded) Icons.Filled.Close else Icons.Filled.KeyboardArrowLeft,
+                                contentDescription = if (isToolbarExpanded) "收起" else "展开"
+                            )
+                        }
                     }
                 }
             }

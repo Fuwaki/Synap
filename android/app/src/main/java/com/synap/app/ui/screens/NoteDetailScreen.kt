@@ -8,6 +8,7 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,13 +25,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,12 +44,14 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -59,7 +63,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -238,6 +244,10 @@ fun NoteDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCopyDialog by remember { mutableStateOf(false) }
 
+    // 分享 BottomSheet 状态
+    var showShareBottomSheet by remember { mutableStateOf(false) }
+    val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -292,6 +302,76 @@ fun NoteDetailScreen(
                 }
             }
         )
+    }
+
+    // 分享 BottomSheet 内容
+    if (showShareBottomSheet && uiState.note != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showShareBottomSheet = false },
+            sheetState = shareSheetState,
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "扫码分享",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 合并所有文本生成二维码
+                val fullTextToShare = remember(uiState) {
+                    buildString {
+                        append(uiState.note!!.content)
+                        val allRelated = uiState.origins + uiState.previousVersions + uiState.nextVersions + uiState.replies
+                        if (allRelated.isNotEmpty()) {
+                            append("\n\n--- 关联内容 ---\n")
+                            allRelated.distinctBy { it.id }.forEach {
+                                append(it.content).append("\n\n")
+                            }
+                        }
+                    }
+                }
+
+                val qrPrimaryColor = MaterialTheme.colorScheme.primary.toArgb()
+                val qrBgColor = MaterialTheme.colorScheme.surface.toArgb()
+
+                val qrBitmap = remember(fullTextToShare, qrPrimaryColor, qrBgColor) {
+                    generateQRCodeBitmap(fullTextToShare, 800, qrPrimaryColor, qrBgColor)
+                }
+
+                if (qrBitmap != null) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 8.dp,
+                        shadowElevation = 4.dp
+                    ) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "笔记分享二维码",
+                            modifier = Modifier
+                                .size(280.dp)
+                                .padding(16.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.size(280.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("二维码内容过长，生成失败", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                Spacer(modifier = Modifier.height(48.dp))
+            }
+        }
     }
 
     // ========== 预返回手势核心状态 ==========
@@ -487,17 +567,18 @@ fun NoteDetailScreen(
                     Spacer(modifier = Modifier.height(120.dp))
                 }
 
+                // 修改浮动工具栏颜色与返回顶部按钮一致
                 HorizontalFloatingToolbar(
                     expanded = true,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 24.dp),
                     colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                        toolbarContainerColor = MaterialTheme.colorScheme.primary,
-                        toolbarContentColor = MaterialTheme.colorScheme.onPrimary
+                        toolbarContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        toolbarContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 ) {
-                    val iconTint = MaterialTheme.colorScheme.onPrimary
+                    val iconTint = MaterialTheme.colorScheme.onSecondaryContainer
 
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
@@ -540,9 +621,20 @@ fun NoteDetailScreen(
                             Toast.makeText(context, calendarUnavailableMessage, Toast.LENGTH_SHORT).show()
                         }
                     }) {
+                        // 替换为闹钟图标
                         Icon(
-                            imageVector = Icons.Filled.Event,
+                            imageVector = Icons.Filled.Alarm,
                             contentDescription = addCalendarReminderLabel,
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
+                        )
+                    }
+
+                    // 新增分享按钮
+                    IconButton(onClick = { showShareBottomSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = "分享",
                             modifier = Modifier.size(24.dp),
                             tint = iconTint
                         )
@@ -644,5 +736,38 @@ private fun RelationSection(
                 }
             }
         }
+    }
+}
+
+// ==================== 二维码生成工具 ====================
+fun generateQRCodeBitmap(text: String, size: Int = 512, primaryColor: Int = android.graphics.Color.BLACK, backgroundColor: Int = android.graphics.Color.WHITE): android.graphics.Bitmap? {
+    if (text.isEmpty()) return null
+    return try {
+        val hints = mapOf(
+            com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8",
+            com.google.zxing.EncodeHintType.MARGIN to 1 // 缩小留白
+        )
+        val bitMatrix = com.google.zxing.MultiFormatWriter().encode(
+            text,
+            com.google.zxing.BarcodeFormat.QR_CODE,
+            size,
+            size,
+            hints
+        )
+        val width = bitMatrix.width
+        val height = bitMatrix.height
+        val pixels = IntArray(width * height)
+        for (y in 0 until height) {
+            val offset = y * width
+            for (x in 0 until width) {
+                pixels[offset + x] = if (bitMatrix[x, y]) primaryColor else backgroundColor
+            }
+        }
+        val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        bitmap
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
     }
 }

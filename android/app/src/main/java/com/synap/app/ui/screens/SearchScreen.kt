@@ -1,5 +1,9 @@
 package com.synap.app.ui.screens
 
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,6 +17,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -29,12 +34,16 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -42,8 +51,10 @@ import com.synap.app.R
 import com.synap.app.ui.components.NoteCardItem
 import com.synap.app.ui.model.Note
 import com.synap.app.ui.viewmodel.HomeUiState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun SearchScreen(
     uiState: HomeUiState,
@@ -52,7 +63,9 @@ fun SearchScreen(
     onClearSearch: () -> Unit,
     onNavigateBack: () -> Unit,
     onOpenNote: (String) -> Unit,
-    onToggleDeleted: (Note) -> Unit
+    onToggleDeleted: (Note) -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val focusRequester = remember { FocusRequester() }
     val gridState = rememberLazyStaggeredGridState()
@@ -63,12 +76,50 @@ fun SearchScreen(
         focusRequester.requestFocus()
     }
 
+    // ========== 预返回手势核心状态 ==========
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { backEvent ->
+                backProgress = backEvent.progress
+            }
+            onNavigateBack()
+        } catch (e: CancellationException) {
+            backProgress = 0f
+        }
+    }
+
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            // ========== 侧滑时的预返回手势缩放保留在最外层 ==========
+            .graphicsLayer {
+                val scale = 1f - (0.1f * backProgress)
+                scaleX = scale
+                scaleY = scale
+                shape = RoundedCornerShape(32.dp * backProgress)
+                clip = true
+            },
         topBar = {
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // ========== 把展开动画的焦点从全屏移到顶部的搜索栏上 ==========
+                    .let {
+                        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                            with(sharedTransitionScope) {
+                                it.sharedBounds(
+                                    sharedContentState = rememberSharedContentState(key = "search_bar_transform"),
+                                    animatedVisibilityScope = animatedVisibilityScope
+                                )
+                            }
+                        } else {
+                            it
+                        }
+                    }
             ) {
                 Row(
                     modifier = Modifier
@@ -119,7 +170,7 @@ fun SearchScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             when {
                 // 默认状态：输入框为空时不展示任何笔记
@@ -164,7 +215,12 @@ fun SearchScreen(
                         columns = StaggeredGridCells.Adaptive(minSize = 240.dp),
                         state = gridState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = 16.dp,
+                            end = 16.dp,
+                            bottom = 16.dp + innerPadding.calculateBottomPadding()
+                        ),
                         verticalItemSpacing = 16.dp,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
@@ -172,11 +228,9 @@ fun SearchScreen(
                             NoteCardItem(
                                 note = note,
                                 onClick = { onOpenNote(note.id) },
-                                // --- 补充缺少的参数，搜索页默认关闭多选模式 ---
                                 onLongClick = { /* 搜索页不触发多选 */ },
                                 isSelectionMode = false,
                                 isSelected = false,
-                                // ------------------------------------
                                 onToggleDeleted = { onToggleDeleted(note) },
                                 onReply = { },
                                 animationDelayMillis = (index.coerceAtMost(6)) * 45,

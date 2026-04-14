@@ -88,12 +88,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.synap.app.R
-import com.synap.app.ui.components.HomeFilterBar
 import com.synap.app.ui.components.HomeNoteFeed
 import com.synap.app.ui.components.HomeSessionFeed
 import com.synap.app.ui.model.Note
-import com.synap.app.ui.model.TimelineSessionGroup
-import com.synap.app.ui.theme.MyApplicationTheme
 import com.synap.app.ui.viewmodel.HomeUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -314,7 +311,6 @@ fun HomeScreen(
             }
     }
 
-    // 多选删除确认弹窗
     if (showMultiDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showMultiDeleteDialog = false },
@@ -439,6 +435,19 @@ fun HomeScreen(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    // ========== 给首页的搜索框打上共享 Tag ==========
+                                    .let {
+                                        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                                            with(sharedTransitionScope) {
+                                                it.sharedBounds(
+                                                    sharedContentState = rememberSharedContentState(key = "search_bar_transform"),
+                                                    animatedVisibilityScope = animatedVisibilityScope
+                                                )
+                                            }
+                                        } else {
+                                            it
+                                        }
+                                    }
                                     .clip(MaterialTheme.shapes.extraLarge)
                                     .clickable { onOpenSearch() },
                                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -555,7 +564,7 @@ fun HomeScreen(
                             }
 
                             IconButton(
-                                onClick = { showMultiDeleteDialog = true }, // 触发弹窗而不是直接删除
+                                onClick = { showMultiDeleteDialog = true },
                                 enabled = selectedNoteIds.isNotEmpty()
                             ) {
                                 Icon(
@@ -574,7 +583,7 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -696,11 +705,13 @@ fun HomeScreen(
                                         }
                                     },
                                     onReplyToNote = onReplyToNote,
+                                    bottomInset = innerPadding.calculateBottomPadding()
                                 )
                             } else {
                                 HomeNoteFeed(
                                     notes = displayNotes,
                                     state = noteGridState,
+                                    contentPadding = innerPadding,
                                     isSelectionMode = isSelectionMode,
                                     selectedNoteIds = selectedNoteIds,
                                     onToggleSelection = ::toggleSelection,

@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.synap.app.ui.model.Note
 
@@ -16,13 +17,15 @@ import com.synap.app.ui.model.Note
 fun HomeNoteFeed(
     notes: List<Note>,
     state: LazyStaggeredGridState,
-    isSelectionMode: Boolean, // 新增参数
-    selectedNoteIds: Set<String>, // 新增参数
-    onToggleSelection: (String) -> Unit, // 新增参数
-    onEnterSelectionMode: (String) -> Unit, // 新增参数
+    isSelectionMode: Boolean,
+    selectedNoteIds: Set<String>,
+    onToggleSelection: (String) -> Unit,
+    onEnterSelectionMode: (String) -> Unit,
     onOpenNote: (String) -> Unit,
     onToggleDeleted: (Note) -> Unit,
     onReplyToNote: (String, String) -> Unit,
+    bottomInset: Dp = 0.dp, // 新增参数
+    contentPadding: PaddingValues
 ) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(minSize = 240.dp),
@@ -30,9 +33,10 @@ fun HomeNoteFeed(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
             start = 16.dp,
-            top = 8.dp,
+            top = 8.dp, // 顶部固定写死 8.dp
             end = 16.dp,
-            bottom = 96.dp,
+            // 核心修改：原有悬浮按钮的 96.dp 加上系统的底部小白条高度
+            bottom = 96.dp + bottomInset,
         ),
         verticalItemSpacing = 16.dp,
         horizontalArrangement = Arrangement.spacedBy(16.dp),

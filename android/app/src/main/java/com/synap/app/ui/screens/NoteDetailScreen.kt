@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.CalendarContract
 import android.widget.Toast
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -35,6 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -64,6 +69,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,6 +82,7 @@ import com.synap.app.ui.model.Note
 import com.synap.app.ui.util.formatNoteTime
 import com.synap.app.ui.viewmodel.DetailUiState
 import kotlinx.coroutines.launch
+import java.util.concurrent.CancellationException
 
 // ==================== 共享 Markdown 渲染引擎 ====================
 fun buildMarkdownAnnotatedString(
@@ -115,24 +122,7 @@ fun buildMarkdownAnnotatedString(
             }
         }
 
-        processMatches(Regex("(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"), SpanStyle(fontStyle = FontStyle.Italic))
-        processMatches(Regex("~~(.*?)~~"), SpanStyle(textDecoration = TextDecoration.LineThrough))
-        processMatches(Regex("<u>(.*?)</u>"), SpanStyle(textDecoration = TextDecoration.Underline))
-        processMatches(Regex("==(.*?)=="), SpanStyle(background = highlightColor, color = Color.Black))
-
-        Regex("^☐(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
-            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
-            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
-        }
-        Regex("^☑(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
-            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
-            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
-        }
-
         if (!isCompact) {
-            processMatches(Regex("\\*\\*\\*(.*?)\\*\\*\\*"), SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic))
-            processMatches(Regex("(?<!\\*)\\*\\*(?!\\*)(.*?)(?<!\\*)\\*\\*(?!\\*)"), SpanStyle(fontWeight = FontWeight.Bold))
-
             Regex("^(#{1,4} )(.*)", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
                 if (match.groups.size >= 3) {
                     val level = match.groups[1]!!.value.trim().length
@@ -178,6 +168,20 @@ fun buildMarkdownAnnotatedString(
             Regex("^•( )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
                 addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.Bold), match.range.first, match.range.first + 1)
             }
+        }
+
+        Regex("^☐(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
+            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+        }
+        Regex("^☑(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
+            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+        }
+
+        if (!isCompact) {
+            processMatches(Regex("\\*\\*\\*(.*?)\\*\\*\\*"), SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic))
+            processMatches(Regex("(?<!\\*)\\*\\*(?!\\*)(.*?)(?<!\\*)\\*\\*(?!\\*)"), SpanStyle(fontWeight = FontWeight.Bold))
         } else {
             Regex("\\*\\*\\*|\\*\\*").findAll(visualString).forEach { match ->
                 addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
@@ -195,6 +199,11 @@ fun buildMarkdownAnnotatedString(
                 addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
             }
         }
+
+        processMatches(Regex("(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"), SpanStyle(fontStyle = FontStyle.Italic))
+        processMatches(Regex("~~(.*?)~~"), SpanStyle(textDecoration = TextDecoration.LineThrough))
+        processMatches(Regex("<u>(.*?)</u>"), SpanStyle(textDecoration = TextDecoration.Underline))
+        processMatches(Regex("==(.*?)=="), SpanStyle(background = highlightColor, color = Color.Black))
     }
 }
 
@@ -229,7 +238,6 @@ fun NoteDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCopyDialog by remember { mutableStateOf(false) }
 
-    // 删除弹窗
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -249,7 +257,6 @@ fun NoteDetailScreen(
         )
     }
 
-    // 复制 Markdown 提示弹窗
     if (showCopyDialog && uiState.note != null) {
         AlertDialog(
             onDismissRequest = { showCopyDialog = false },
@@ -287,7 +294,31 @@ fun NoteDetailScreen(
         )
     }
 
+    // ========== 预返回手势核心状态 ==========
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { backEvent ->
+                backProgress = backEvent.progress // 收集系统侧滑进度 (0.0 ~ 1.0)
+            }
+            onNavigateBack() // 手指松开且达到返回阈值时触发
+        } catch (e: CancellationException) {
+            backProgress = 0f // 用户取消了侧滑，重置进度
+        }
+    }
+
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            // ========== 应用预返回手势形变 ==========
+            .graphicsLayer {
+                val scale = 1f - (0.1f * backProgress) // 页面最多缩小到 90%
+                scaleX = scale
+                scaleY = scale
+                shape = RoundedCornerShape(32.dp * backProgress) // 随进度增加圆角
+                clip = true
+            },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.notedetail_title)) },
@@ -460,13 +491,20 @@ fun NoteDetailScreen(
                     expanded = true,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 24.dp)
+                        .padding(bottom = 24.dp),
+                    colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                        toolbarContainerColor = MaterialTheme.colorScheme.primary,
+                        toolbarContentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 ) {
+                    val iconTint = MaterialTheme.colorScheme.onPrimary
+
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
                             contentDescription = stringResource(R.string.delete),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -481,7 +519,8 @@ fun NoteDetailScreen(
                         Icon(
                             imageVector = Icons.Filled.ContentCopy,
                             contentDescription = "复制",
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -504,7 +543,8 @@ fun NoteDetailScreen(
                         Icon(
                             imageVector = Icons.Filled.Event,
                             contentDescription = addCalendarReminderLabel,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -512,7 +552,8 @@ fun NoteDetailScreen(
                         Icon(
                             imageVector = Icons.Filled.Reply,
                             contentDescription = stringResource(R.string.reply),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -520,7 +561,8 @@ fun NoteDetailScreen(
                         Icon(
                             imageVector = Icons.Filled.Edit,
                             contentDescription = stringResource(R.string.edit),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
                 }
@@ -582,6 +624,8 @@ private fun RelationSection(
 
                     Text(
                         text = annotatedContent,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = LocalNoteFontFamily.current,
                             fontWeight = LocalNoteFontWeight.current,

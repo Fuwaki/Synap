@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridItemInfo
+import androidx.compose.ui.unit.Dp
 import com.synap.app.ui.model.Note
 import com.synap.app.ui.model.TimelineSessionGroup
 import com.synap.app.ui.util.formatSessionDayLabel
@@ -51,6 +52,7 @@ fun HomeSessionFeed(
     onOpenNote: (String) -> Unit,
     onToggleDeleted: (Note) -> Unit,
     onReplyToNote: (String, String) -> Unit,
+    bottomInset: Dp,
 ) {
     val sessionHeaderIndexes = remember(sessions) { buildSessionHeaderIndexes(sessions) }
     val markers = remember(sessions) {

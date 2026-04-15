@@ -91,15 +91,14 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != ''
         run: |
           echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/upload-keystore.jks
-          cat > android/keystore.properties <<'EOF'
-          storeFile=upload-keystore.jks
-          storePassword=${ANDROID_KEYSTORE_PASSWORD}
-          keyAlias=${ANDROID_KEY_ALIAS}
-          keyPassword=${ANDROID_KEY_PASSWORD}
-          EOF
 
       - name: Build Android app
         working-directory: android
+        env:
+          SIGNING_STORE_FILE: ${{ github.workspace }}/android/upload-keystore.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then

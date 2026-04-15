@@ -4,9 +4,11 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.CalendarContract
 import android.widget.Toast
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,34 +22,40 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,6 +63,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -64,6 +75,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,6 +88,7 @@ import com.synap.app.ui.model.Note
 import com.synap.app.ui.util.formatNoteTime
 import com.synap.app.ui.viewmodel.DetailUiState
 import kotlinx.coroutines.launch
+import java.util.concurrent.CancellationException
 
 // ==================== 共享 Markdown 渲染引擎 ====================
 fun buildMarkdownAnnotatedString(
@@ -115,24 +128,7 @@ fun buildMarkdownAnnotatedString(
             }
         }
 
-        processMatches(Regex("(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"), SpanStyle(fontStyle = FontStyle.Italic))
-        processMatches(Regex("~~(.*?)~~"), SpanStyle(textDecoration = TextDecoration.LineThrough))
-        processMatches(Regex("<u>(.*?)</u>"), SpanStyle(textDecoration = TextDecoration.Underline))
-        processMatches(Regex("==(.*?)=="), SpanStyle(background = highlightColor, color = Color.Black))
-
-        Regex("^☐(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
-            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
-            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
-        }
-        Regex("^☑(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
-            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
-            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
-        }
-
         if (!isCompact) {
-            processMatches(Regex("\\*\\*\\*(.*?)\\*\\*\\*"), SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic))
-            processMatches(Regex("(?<!\\*)\\*\\*(?!\\*)(.*?)(?<!\\*)\\*\\*(?!\\*)"), SpanStyle(fontWeight = FontWeight.Bold))
-
             Regex("^(#{1,4} )(.*)", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
                 if (match.groups.size >= 3) {
                     val level = match.groups[1]!!.value.trim().length
@@ -178,6 +174,20 @@ fun buildMarkdownAnnotatedString(
             Regex("^•( )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
                 addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.Bold), match.range.first, match.range.first + 1)
             }
+        }
+
+        Regex("^☐(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
+            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+        }
+        Regex("^☑(     )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
+            addStyle(SpanStyle(color = primaryColor, fontSize = (baseFontSize * 1.3f).sp), match.range.first, match.range.first + 1)
+            addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+        }
+
+        if (!isCompact) {
+            processMatches(Regex("\\*\\*\\*(.*?)\\*\\*\\*"), SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic))
+            processMatches(Regex("(?<!\\*)\\*\\*(?!\\*)(.*?)(?<!\\*)\\*\\*(?!\\*)"), SpanStyle(fontWeight = FontWeight.Bold))
         } else {
             Regex("\\*\\*\\*|\\*\\*").findAll(visualString).forEach { match ->
                 addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
@@ -195,6 +205,11 @@ fun buildMarkdownAnnotatedString(
                 addStyle(hiddenSpanStyle, match.range.first, match.range.last + 1)
             }
         }
+
+        processMatches(Regex("(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"), SpanStyle(fontStyle = FontStyle.Italic))
+        processMatches(Regex("~~(.*?)~~"), SpanStyle(textDecoration = TextDecoration.LineThrough))
+        processMatches(Regex("<u>(.*?)</u>"), SpanStyle(textDecoration = TextDecoration.Underline))
+        processMatches(Regex("==(.*?)=="), SpanStyle(background = highlightColor, color = Color.Black))
     }
 }
 
@@ -229,7 +244,10 @@ fun NoteDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCopyDialog by remember { mutableStateOf(false) }
 
-    // 删除弹窗
+    // 分享 BottomSheet 状态
+    var showShareBottomSheet by remember { mutableStateOf(false) }
+    val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -249,7 +267,6 @@ fun NoteDetailScreen(
         )
     }
 
-    // 复制 Markdown 提示弹窗
     if (showCopyDialog && uiState.note != null) {
         AlertDialog(
             onDismissRequest = { showCopyDialog = false },
@@ -287,7 +304,101 @@ fun NoteDetailScreen(
         )
     }
 
+    // 分享 BottomSheet 内容
+    if (showShareBottomSheet && uiState.note != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showShareBottomSheet = false },
+            sheetState = shareSheetState,
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "扫码分享",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 合并所有文本生成二维码
+                val fullTextToShare = remember(uiState) {
+                    buildString {
+                        append(uiState.note!!.content)
+                        val allRelated = uiState.origins + uiState.previousVersions + uiState.nextVersions + uiState.replies
+                        if (allRelated.isNotEmpty()) {
+                            append("\n\n--- 关联内容 ---\n")
+                            allRelated.distinctBy { it.id }.forEach {
+                                append(it.content).append("\n\n")
+                            }
+                        }
+                    }
+                }
+
+                val qrPrimaryColor = MaterialTheme.colorScheme.primary.toArgb()
+                val qrBgColor = MaterialTheme.colorScheme.surface.toArgb()
+
+                val qrBitmap = remember(fullTextToShare, qrPrimaryColor, qrBgColor) {
+                    generateQRCodeBitmap(fullTextToShare, 800, qrPrimaryColor, qrBgColor)
+                }
+
+                if (qrBitmap != null) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 8.dp,
+                        shadowElevation = 4.dp
+                    ) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "笔记分享二维码",
+                            modifier = Modifier
+                                .size(280.dp)
+                                .padding(16.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.size(280.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("二维码内容过长，生成失败", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                Spacer(modifier = Modifier.height(48.dp))
+            }
+        }
+    }
+
+    // ========== 预返回手势核心状态 ==========
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { backEvent ->
+                backProgress = backEvent.progress // 收集系统侧滑进度 (0.0 ~ 1.0)
+            }
+            onNavigateBack() // 手指松开且达到返回阈值时触发
+        } catch (e: CancellationException) {
+            backProgress = 0f // 用户取消了侧滑，重置进度
+        }
+    }
+
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            // ========== 应用预返回手势形变 ==========
+            .graphicsLayer {
+                val scale = 1f - (0.1f * backProgress) // 页面最多缩小到 90%
+                scaleX = scale
+                scaleY = scale
+                shape = RoundedCornerShape(32.dp * backProgress) // 随进度增加圆角
+                clip = true
+            },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.notedetail_title)) },
@@ -456,17 +567,25 @@ fun NoteDetailScreen(
                     Spacer(modifier = Modifier.height(120.dp))
                 }
 
+                // 修改浮动工具栏颜色与返回顶部按钮一致
                 HorizontalFloatingToolbar(
                     expanded = true,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 24.dp)
+                        .padding(bottom = 24.dp),
+                    colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                        toolbarContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        toolbarContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
                 ) {
+                    val iconTint = MaterialTheme.colorScheme.onSecondaryContainer
+
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
                             contentDescription = stringResource(R.string.delete),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -481,7 +600,8 @@ fun NoteDetailScreen(
                         Icon(
                             imageVector = Icons.Filled.ContentCopy,
                             contentDescription = "复制",
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -501,10 +621,22 @@ fun NoteDetailScreen(
                             Toast.makeText(context, calendarUnavailableMessage, Toast.LENGTH_SHORT).show()
                         }
                     }) {
+                        // 替换为闹钟图标
                         Icon(
-                            imageVector = Icons.Filled.Event,
+                            imageVector = Icons.Filled.Alarm,
                             contentDescription = addCalendarReminderLabel,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
+                        )
+                    }
+
+                    // 新增分享按钮
+                    IconButton(onClick = { showShareBottomSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = "分享",
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -512,7 +644,8 @@ fun NoteDetailScreen(
                         Icon(
                             imageVector = Icons.Filled.Reply,
                             contentDescription = stringResource(R.string.reply),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
 
@@ -520,7 +653,8 @@ fun NoteDetailScreen(
                         Icon(
                             imageVector = Icons.Filled.Edit,
                             contentDescription = stringResource(R.string.edit),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
                         )
                     }
                 }
@@ -582,6 +716,8 @@ private fun RelationSection(
 
                     Text(
                         text = annotatedContent,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = LocalNoteFontFamily.current,
                             fontWeight = LocalNoteFontWeight.current,
@@ -600,5 +736,38 @@ private fun RelationSection(
                 }
             }
         }
+    }
+}
+
+// ==================== 二维码生成工具 ====================
+fun generateQRCodeBitmap(text: String, size: Int = 512, primaryColor: Int = android.graphics.Color.BLACK, backgroundColor: Int = android.graphics.Color.WHITE): android.graphics.Bitmap? {
+    if (text.isEmpty()) return null
+    return try {
+        val hints = mapOf(
+            com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8",
+            com.google.zxing.EncodeHintType.MARGIN to 1 // 缩小留白
+        )
+        val bitMatrix = com.google.zxing.MultiFormatWriter().encode(
+            text,
+            com.google.zxing.BarcodeFormat.QR_CODE,
+            size,
+            size,
+            hints
+        )
+        val width = bitMatrix.width
+        val height = bitMatrix.height
+        val pixels = IntArray(width * height)
+        for (y in 0 until height) {
+            val offset = y * width
+            for (x in 0 until width) {
+                pixels[offset + x] = if (bitMatrix[x, y]) primaryColor else backgroundColor
+            }
+        }
+        val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        bitmap
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
     }
 }

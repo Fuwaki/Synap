@@ -187,6 +187,9 @@ dependencies {
     implementation("androidx.compose.material3:material3-window-size-class:1.5.0-alpha16")
     implementation("androidx.compose.material3:material3-adaptive-navigation-suite:1.5.0-alpha16")
     implementation("androidx.compose.material3:material3:1.5.0-alpha16")
+    implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:editor:4.6.2")
+    implementation("com.google.zxing:core:3.5.3")
 }
 
 apply(from = rootProject.file("gradle/rust-uniffi.gradle.kts"))

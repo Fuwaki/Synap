@@ -11,9 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,7 +29,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
@@ -88,12 +84,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.synap.app.R
-import com.synap.app.ui.components.HomeFilterBar
 import com.synap.app.ui.components.HomeNoteFeed
 import com.synap.app.ui.components.HomeSessionFeed
 import com.synap.app.ui.model.Note
-import com.synap.app.ui.model.TimelineSessionGroup
-import com.synap.app.ui.theme.MyApplicationTheme
 import com.synap.app.ui.viewmodel.HomeUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -314,7 +307,6 @@ fun HomeScreen(
             }
     }
 
-    // 多选删除确认弹窗
     if (showMultiDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showMultiDeleteDialog = false },
@@ -343,7 +335,21 @@ fun HomeScreen(
             Column {
                 if (isSelectionMode) {
                     TopAppBar(
-                        title = { Text(stringResource(R.string.selected) + " ${selectedNoteIds.size} ") },
+                        title = {
+                            // --- 改动：使用白色文字和主题色高亮背景 ---
+                            Surface(
+                                color = MaterialTheme.colorScheme.primary,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "${stringResource(R.string.selected)} ${selectedNoteIds.size}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        },
                         navigationIcon = {
                             IconButton(onClick = {
                                 isSelectionMode = false
@@ -439,6 +445,19 @@ fun HomeScreen(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    // ========== 给首页的搜索框打上共享 Tag ==========
+                                    .let {
+                                        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                                            with(sharedTransitionScope) {
+                                                it.sharedBounds(
+                                                    sharedContentState = rememberSharedContentState(key = "search_bar_transform"),
+                                                    animatedVisibilityScope = animatedVisibilityScope
+                                                )
+                                            }
+                                        } else {
+                                            it
+                                        }
+                                    }
                                     .clip(MaterialTheme.shapes.extraLarge)
                                     .clickable { onOpenSearch() },
                                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -467,104 +486,57 @@ fun HomeScreen(
             }
         },
         floatingActionButton = {
-            Box(
-                modifier = Modifier.fillMaxWidth().offset(y = fabDodgeOffset),
-                contentAlignment = Alignment.BottomCenter
+            // --- 改动：移除之前的 Box 和 Selection Toolbar，这里只保留主 FAB ---
+            AnimatedVisibility(
+                visible = !isSelectionMode,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
             ) {
-                AnimatedVisibility(
-                    visible = !isSelectionMode,
-                    enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-                    exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
-                    modifier = Modifier.align(Alignment.BottomEnd)
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.offset(y = fabDodgeOffset)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    AnimatedVisibility(
+                        visible = isScrolledDown,
+                        enter = fadeIn(),
+                        exit = fadeOut()
                     ) {
-                        AnimatedVisibility(
-                            visible = isScrolledDown,
-                            enter = fadeIn(),
-                            exit = fadeOut()
-                        ) {
-                            FloatingActionButton(
-                                onClick = {
-                                    scope.launch {
-                                        if (isShowingSessionFeed) {
-                                            sessionGridState.animateScrollToItem(0)
-                                        } else {
-                                            noteGridState.animateScrollToItem(0)
-                                        }
-                                    }
-                                },
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            ) {
-                                Icon(Icons.Filled.VerticalAlignTop, contentDescription = stringResource(R.string.backtop))
-                            }
-                        }
-
                         FloatingActionButton(
-                            onClick = onComposeNote,
-                            modifier = Modifier
-                                .size(56.dp)
-                                .let {
-                                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                                        with(sharedTransitionScope) {
-                                            it.sharedBounds(
-                                                sharedContentState = rememberSharedContentState(key = "fab_to_new_note"),
-                                                animatedVisibilityScope = animatedVisibilityScope
-                                            )
-                                        }
+                            onClick = {
+                                scope.launch {
+                                    if (isShowingSessionFeed) {
+                                        sessionGridState.animateScrollToItem(0)
                                     } else {
-                                        it
+                                        noteGridState.animateScrollToItem(0)
                                     }
                                 }
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                         ) {
-                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
+                            Icon(Icons.Filled.VerticalAlignTop, contentDescription = stringResource(R.string.backtop))
                         }
                     }
-                }
 
-                AnimatedVisibility(
-                    visible = isSelectionMode,
-                    enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-                    exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(percent = 50),
-                        shadowElevation = 8.dp,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(bottom = 16.dp)
+                    FloatingActionButton(
+                        onClick = onComposeNote,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .let {
+                                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                                    with(sharedTransitionScope) {
+                                        it.sharedBounds(
+                                            sharedContentState = rememberSharedContentState(key = "fab_to_new_note"),
+                                            animatedVisibilityScope = animatedVisibilityScope
+                                        )
+                                    }
+                                } else {
+                                    it
+                                }
+                            }
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = { /* TODO: 预留分享功能 */ },
-                                enabled = selectedNoteIds.isNotEmpty()
-                            ) {
-                                Icon(
-                                    Icons.Filled.Share,
-                                    contentDescription = "Share",
-                                    tint = if (selectedNoteIds.isNotEmpty()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.38f)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { showMultiDeleteDialog = true }, // 触发弹窗而不是直接删除
-                                enabled = selectedNoteIds.isNotEmpty()
-                            ) {
-                                Icon(
-                                    Icons.Filled.Delete,
-                                    contentDescription = stringResource(R.string.delete),
-                                    tint = if (selectedNoteIds.isNotEmpty()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.38f)
-                                )
-                            }
-                        }
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.home_creatnote))
                     }
                 }
             }
@@ -574,7 +546,7 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -696,11 +668,13 @@ fun HomeScreen(
                                         }
                                     },
                                     onReplyToNote = onReplyToNote,
+                                    bottomInset = innerPadding.calculateBottomPadding()
                                 )
                             } else {
                                 HomeNoteFeed(
                                     notes = displayNotes,
                                     state = noteGridState,
+                                    contentPadding = innerPadding,
                                     isSelectionMode = isSelectionMode,
                                     selectedNoteIds = selectedNoteIds,
                                     onToggleSelection = ::toggleSelection,
@@ -719,6 +693,53 @@ fun HomeScreen(
                                     onReplyToNote = onReplyToNote,
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // --- 改动：将多选的浮动工具栏移至主 Box 内，并设置 BottomCenter 居中 ---
+            AnimatedVisibility(
+                visible = isSelectionMode,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    // 确保避开撤销弹窗及底部导航栏
+                    .offset(y = fabDodgeOffset)
+                    .padding(bottom = innerPadding.calculateBottomPadding() + 32.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(percent = 50),
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { /* TODO: 预留分享功能 */ },
+                            enabled = selectedNoteIds.isNotEmpty()
+                        ) {
+                            Icon(
+                                Icons.Filled.Share,
+                                contentDescription = "Share",
+                                tint = if (selectedNoteIds.isNotEmpty()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.38f)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showMultiDeleteDialog = true },
+                            enabled = selectedNoteIds.isNotEmpty()
+                        ) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = stringResource(R.string.delete),
+                                tint = if (selectedNoteIds.isNotEmpty()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.38f)
+                            )
                         }
                     }
                 }
@@ -785,7 +806,6 @@ fun HomeScreen(
         }
     }
 }
-
 
 @Composable
 fun WavyProgressIndicator(

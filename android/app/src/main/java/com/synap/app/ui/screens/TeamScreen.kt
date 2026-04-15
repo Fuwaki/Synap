@@ -38,6 +38,14 @@ val creativeTeamList = listOf(
         socialLinks = listOf(
             SocialLink("GitHub", null, "https://github.com/yyckn")
         )
+    ),
+    TeamMember(
+        name = "Kitra",
+        socialLinks = listOf(
+            SocialLink("bilibili", R.string.bilibili, "https://space.bilibili.com/180371610"),
+            SocialLink("Blog", null, "https://blog.kitramgp.cn/"),
+            SocialLink("GitHub", null, "https://github.com/KitraMGP")
+        )
     )
 )
 

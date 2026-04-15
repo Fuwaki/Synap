@@ -15,8 +15,15 @@ val generatedCoreffiBindingsDir = layout.buildDirectory.dir("generated/source/un
 val androidLocalProperties = Properties().apply {
     rootDir.resolve("local.properties").takeIf { it.isFile }?.inputStream()?.use(::load)
 }
+
 val releaseSigningProperties = Properties().apply {
     rootDir.resolve("keystore.properties").takeIf { it.isFile }?.inputStream()?.use(::load)
+
+    // 环境变量覆盖文件配置（用于 CI）
+    System.getenv("SIGNING_STORE_FILE")?.let { setProperty("storeFile", it) }
+    System.getenv("SIGNING_STORE_PASSWORD")?.let { setProperty("storePassword", it) }
+    System.getenv("SIGNING_KEY_ALIAS")?.let { setProperty("keyAlias", it) }
+    System.getenv("SIGNING_KEY_PASSWORD")?.let { setProperty("keyPassword", it) }
 }
 
 fun Properties.hasNonBlank(key: String): Boolean =

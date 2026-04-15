@@ -1,6 +1,7 @@
 <resources>
     <string name="home">主页</string>
     <string name="delete">删除</string>
+    <string name="cancel">取消</string>
     <string name="edit">编辑</string>
     <string name="reply">回复</string>
     <string name="retry">重试</string>
@@ -73,6 +74,7 @@
     <string name="home_tagbar_all">全部标签</string>
     <string name="home_creatnote">创建笔记</string>
     <string name="backtop">回到顶部</string>
+    <string name="content_desc_settings">设置</string>
     <string name="edit_hint_reply">回复自</string>
     <string name="notedetail_title">笔记详情</string>
     <string name="notedetail_errorMessage">笔记不存在</string>
@@ -86,8 +88,15 @@
     <string name="creative_team">创作团队</string>
     <string name="bilibili">哔哩哔哩</string>
     <string name="tiktok">抖音</string>
-    <string name="xiaohongshu">小红书</string>
     <string name="role_backend">后端开发</string>
     <string name="role_frontend_ui">前端 &amp; UI 设计</string>
     <string name="edit_reply_context_title">接续这条思路</string>
+    <string name="home_empty">这里空空如也</string>
+    <string name="home_deleted_note">已删除笔记</string>
+    <string name="home_undo_delete">撤销删除</string>
+    <string name="home_filter_all">全部</string>
+    <string name="home_filter_untagged">未分类</string>
+    <string name="home_feed_waterfall">瀑布流</string>
+    <string name="home_feed_timeline">时间组</string>
+    <string name="content_desc_search">搜索</string>
 </resources>

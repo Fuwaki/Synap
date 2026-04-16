@@ -2,7 +2,7 @@
 <resources>
     <style name="Theme.Synap" parent="Theme.AppCompat.DayNight.NoActionBar" />
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#94774a</item>
+        <item name="windowSplashScreenBackground">#fffff8</item>
         <item name="windowSplashScreenAnimatedIcon">@mipmap/synapicon_round</item>
         <item name="postSplashScreenTheme">@style/Theme.Synap</item>
     </style>

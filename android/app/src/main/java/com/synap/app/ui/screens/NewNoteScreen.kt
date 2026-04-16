@@ -1,5 +1,12 @@
 package com.synap.app.ui.screens
 
+import android.content.Context
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.Gravity
+import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -60,25 +67,26 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.appcompat.widget.AppCompatEditText
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.Gravity
 import com.synap.app.LocalNoteTextSize
 import com.synap.app.R
 import com.synap.app.ui.viewmodel.EditorMode
@@ -86,6 +94,8 @@ import com.synap.app.ui.viewmodel.EditorUiState
 import io.noties.markwon.Markwon
 import io.noties.markwon.editor.MarkwonEditor
 import io.noties.markwon.editor.MarkwonEditorTextWatcher
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -104,6 +114,7 @@ fun NewNoteScreen(
     val tagFocusRequester = remember { FocusRequester() }
 
     val isImeVisible = WindowInsets.isImeVisible
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // 控制工具栏展开和收起的状态
     var isToolbarExpanded by remember { mutableStateOf(true) }
@@ -138,9 +149,54 @@ fun NewNoteScreen(
         }
     }
 
+    // ========== 核心新增：自动获取焦点并弹起键盘 ==========
+    LaunchedEffect(nativeEditText) {
+        nativeEditText?.let { et ->
+            // 等待页面共享动画完成，保证拉起键盘时依然丝滑
+            delay(300)
+            et.requestFocus()
+            val imm = et.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(et, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
+    // ========== 核心新增：处理降下键盘并执行路由回调 ==========
+    fun hideKeyboardAndNavigate(action: () -> Unit) {
+        keyboardController?.hide()
+        nativeEditText?.let { et ->
+            val imm = et.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(et.windowToken, 0)
+            et.clearFocus()
+        }
+        action()
+    }
+
+    // ========== 预返回手势核心状态 ==========
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { backEvent ->
+                backProgress = backEvent.progress // 收集滑动进度
+            }
+            // 手指松开且决定返回时，收起键盘并触发导航
+            hideKeyboardAndNavigate { onNavigateBack() }
+        } catch (e: CancellationException) {
+            backProgress = 0f // 用户取消了返回手势，重置进度
+        }
+    }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
+            // ========== 应用预返回手势的视觉形变 ==========
+            .graphicsLayer {
+                val scale = 1f - (0.1f * backProgress) // 页面最多缩小到 90%
+                scaleX = scale
+                scaleY = scale
+                shape = RoundedCornerShape(32.dp * backProgress) // 随进度增加圆角
+                clip = true
+            }
             .let {
                 if (uiState.mode == EditorMode.Create && sharedTransitionScope != null && animatedVisibilityScope != null) {
                     with(sharedTransitionScope) {
@@ -154,9 +210,11 @@ fun NewNoteScreen(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(if (uiState.mode is EditorMode.Create) R.string.edit_title_creat else R.string.edit_title_edit)) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.Filled.ArrowBack, "返回") } },
+                // 点击返回按钮收下键盘
+                navigationIcon = { IconButton(onClick = { hideKeyboardAndNavigate { onNavigateBack() } }) { Icon(Icons.Filled.ArrowBack, "返回") } },
+                // 点击保存按钮收下键盘
                 actions = {
-                    IconButton(onClick = onSave, enabled = !uiState.isSaving && !uiState.isLoading) {
+                    IconButton(onClick = { hideKeyboardAndNavigate { onSave() } }, enabled = !uiState.isSaving && !uiState.isLoading) {
                         if (uiState.isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp)) else Icon(Icons.Filled.Check, "保存")
                     }
                 },
@@ -169,18 +227,68 @@ fun NewNoteScreen(
                 // 标签区域
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     if (isTagInputVisible) {
-                        OutlinedTextField(
-                            value = tagInputText,
-                            onValueChange = { tagInputText = it },
-                            placeholder = { Text("输入标签") },
-                            modifier = Modifier.fillMaxWidth().height(56.dp).focusRequester(tagFocusRequester)
-                                .onFocusChanged { if (!it.isFocused && tagInputText.isBlank()) isTagInputVisible = false },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                if (tagInputText.isNotBlank()) { onAddTag(tagInputText.trim()); tagInputText = ""; isTagInputVisible = false }
-                            })
-                        )
+                        // 出现输入框时，强制请求焦点，防止触发 onFocusChanged 导致瞬间隐藏
+                        var hasGainedFocus by remember { mutableStateOf(false) }
+
+                        LaunchedEffect(Unit) {
+                            try {
+                                tagFocusRequester.requestFocus()
+                            } catch (e: Exception) {
+                                // 忽略偶发的焦点请求异常
+                            }
+                        }
+
+                        // 【核心修改】：在旁边包裹了 Row 并增加确认按钮
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = tagInputText,
+                                onValueChange = { tagInputText = it },
+                                placeholder = { Text("输入标签") },
+                                modifier = Modifier
+                                    .weight(1f) // 使 TextField 占据剩余所有空间
+                                    .height(56.dp)
+                                    .focusRequester(tagFocusRequester)
+                                    .onFocusChanged { focusState ->
+                                        if (focusState.isFocused) {
+                                            hasGainedFocus = true
+                                        } else if (hasGainedFocus && tagInputText.isBlank()) {
+                                            isTagInputVisible = false
+                                        }
+                                    },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    if (tagInputText.isNotBlank()) {
+                                        onAddTag(tagInputText.trim())
+                                        tagInputText = ""
+                                        isTagInputVisible = false
+                                    } else {
+                                        isTagInputVisible = false
+                                    }
+                                })
+                            )
+
+                            // 【核心新增】：确认识别标签的勾号按钮
+                            IconButton(
+                                onClick = {
+                                    if (tagInputText.isNotBlank()) {
+                                        onAddTag(tagInputText.trim())
+                                        tagInputText = ""
+                                    }
+                                    isTagInputVisible = false
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "确认添加",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     } else {
                         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             uiState.tags.forEachIndexed { i, tag ->
@@ -190,6 +298,32 @@ fun NewNoteScreen(
                             InputChip(selected = false, onClick = { isTagInputVisible = true }, label = { Text("添加标签") }, trailingIcon = { Icon(Icons.Filled.Add, null, Modifier.size(16.dp)) })
                         }
                     }
+
+                    // ==================== 恢复的标签推荐功能 ====================
+                    if (uiState.recommendedTags.isNotEmpty() || uiState.isRecommendingTags) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp, bottom = 8.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("推荐标签：", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (uiState.isRecommendingTags) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp).padding(start = 4.dp), strokeWidth = 2.dp)
+                            } else {
+                                uiState.recommendedTags.forEach { tag ->
+                                    Text(
+                                        text = "#$tag",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { onAddTag(tag) }.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 }
 
@@ -231,7 +365,6 @@ fun NewNoteScreen(
 
                                     setText(uiState.content)
                                     setSelection(uiState.content.length)
-                                    requestFocus()
                                 }
                             },
                             update = { view ->
@@ -270,27 +403,27 @@ fun NewNoteScreen(
                             shape = RoundedCornerShape(50),
                             color = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            shadowElevation = 6.dp
+                            shadowElevation = 6.dp,
+                            modifier = Modifier.height(64.dp)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .padding(horizontal = 8.dp)
                                     .horizontalScroll(rememberScrollState()),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val iconColor = MaterialTheme.colorScheme.onPrimaryContainer
                                 val textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = iconColor)
 
-                                // 将所有快捷操作整合至同一行
-                                IconButton(onClick = { applyLinePrefix("# ") }) { Text("H1", style = textStyle) }
-                                IconButton(onClick = { applyLinePrefix("## ") }) { Text("H2", style = textStyle) }
                                 IconButton(onClick = { applyStyle("**", "**") }) { Icon(Icons.Filled.FormatBold, null, tint = iconColor) }
                                 IconButton(onClick = { applyStyle("*", "*") }) { Icon(Icons.Filled.FormatItalic, null, tint = iconColor) }
                                 IconButton(onClick = { applyStyle("~~", "~~") }) { Icon(Icons.Filled.FormatStrikethrough, null, tint = iconColor) }
                                 IconButton(onClick = { applyStyle("<u>", "</u>") }) { Icon(Icons.Filled.FormatUnderlined, null, tint = iconColor) }
                                 IconButton(onClick = { applyStyle("==", "==") }) { Icon(Icons.Filled.FormatColorText, null, tint = iconColor) }
                                 IconButton(onClick = { applyLinePrefix("> ") }) { Icon(Icons.Filled.FormatQuote, null, tint = iconColor) }
+                                IconButton(onClick = { applyLinePrefix("# ") }) { Text("H1", style = textStyle) }
+                                IconButton(onClick = { applyLinePrefix("## ") }) { Text("H2", style = textStyle) }
                                 IconButton(onClick = { applyLinePrefix("- ") }) { Icon(Icons.Filled.FormatListBulleted, null, tint = iconColor) }
                                 IconButton(onClick = { applyLinePrefix("1. ") }) { Text("1.", style = textStyle) }
                             }
@@ -304,9 +437,13 @@ fun NewNoteScreen(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        shadowElevation = 6.dp
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.size(64.dp)
                     ) {
-                        IconButton(onClick = { isToolbarExpanded = !isToolbarExpanded }) {
+                        IconButton(
+                            onClick = { isToolbarExpanded = !isToolbarExpanded },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
                             Icon(
                                 imageVector = if (isToolbarExpanded) Icons.Filled.Close else Icons.Filled.KeyboardArrowLeft,
                                 contentDescription = if (isToolbarExpanded) "收起" else "展开"

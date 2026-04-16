@@ -67,7 +67,6 @@ fun SynapNavGraph(
 
     val startDestination = remember { if (hasSeenTutorial) "home" else "tutorial" }
 
-    // ==================== 核心修改：在最外层包裹共享元素动画布局 ====================
     SharedTransitionLayout {
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
@@ -113,7 +112,6 @@ fun SynapNavGraph(
                         onToggleTagFilter = viewModel::toggleTag,
                         onToggleUntaggedFilter = viewModel::toggleUntagged,
                         onToggleAllTags = viewModel::toggleAllTags,
-                        // ========== 注入共享动画作用域 ==========
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@composable
                     )
@@ -176,8 +174,16 @@ fun SynapNavGraph(
                         databaseActivity = databaseActivity,
                         onNavigateToTypographySettings = { navController.navigate("typography_settings") },
                         onNavigateToLanguageSelection = { navController.navigate("language_selection") },
+                        onNavigateToAppIcon = { navController.navigate("app_icon") }, // ===== 新增：跳转到图标设置 =====
                         onNavigateToTeam = { navController.navigate("team") },
                         onNavigateToTutorial = { navController.navigate("tutorial") },
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                // ==================== 新增：图标设置页的路由节点 ====================
+                composable("app_icon") {
+                    SettingLogoScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
@@ -235,7 +241,6 @@ fun SynapNavGraph(
                         onAddTag = viewModel::addTag,
                         onRemoveTag = viewModel::removeTag,
                         onSave = viewModel::save,
-                        // ========== 注入共享动画作用域 ==========
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@composable
                     )

@@ -43,6 +43,7 @@ fun SettingsContainer(
     databaseActivity: MainActivity?,
     onNavigateToTypographySettings: () -> Unit,
     onNavigateToLanguageSelection: () -> Unit,
+    onNavigateToAppIcon: () -> Unit, // ===== 新增：接收跳转到图标设置的事件 =====
     onNavigateToTeam: () -> Unit,
     onNavigateToTutorial: () -> Unit,
     onNavigateBack: () -> Unit
@@ -173,6 +174,7 @@ fun SettingsContainer(
         },
         onNavigateToTypographySettings = onNavigateToTypographySettings,
         onNavigateToLanguageSelection = onNavigateToLanguageSelection,
+        onNavigateToAppIcon = onNavigateToAppIcon, // ===== 传递事件 =====
         onNavigateToTeam = onNavigateToTeam,
         onNavigateToTutorial = onNavigateToTutorial,
         onNavigateBack = onNavigateBack,

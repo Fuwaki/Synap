@@ -21,14 +21,12 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var synapService: SynapServiceApi
 
-    // 引入 HomeViewModel 以便监听首页数据的加载状态
     private val homeViewModel: HomeViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // 记录启动时间
         val startTime = System.currentTimeMillis()
         val timeout = 100L
 
@@ -38,8 +36,40 @@ class MainActivity : AppCompatActivity() {
             uiState.isLoading && uiState.errorMessage == null && (currentTime - startTime < timeout)
         }
 
+        // ========== 修改：处理冷启动时的外部文字传入 ==========
+        handleExternalTextIntent(intent)
+
         setContent {
             SynapApp(activity = this)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        // ========== 修改：处理热启动（App在后台）时的外部文字传入 ==========
+        handleExternalTextIntent(intent)
+        setIntent(intent)
+        super.onNewIntent(intent)
+    }
+
+    // ========== 核心逻辑升级：同时兼容“选词菜单”和“系统分享” ==========
+    private fun handleExternalTextIntent(intent: Intent?) {
+        if (intent == null) return
+
+        var extractedText: String? = null
+
+        // 1. 处理系统选词菜单 (ACTION_PROCESS_TEXT)
+        if (intent.action == Intent.ACTION_PROCESS_TEXT) {
+            extractedText = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+        }
+        // 2. 处理系统分享菜单 (ACTION_SEND)
+        else if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            extractedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+        }
+
+        // 如果成功提取到文字，统一转换为新建笔记的 DeepLink
+        if (!extractedText.isNullOrBlank()) {
+            intent.action = Intent.ACTION_VIEW
+            intent.data = Uri.parse("synap://editor?initialContent=${Uri.encode(extractedText)}")
         }
     }
 
@@ -55,11 +85,9 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val cachePath = File(cacheDir, "exports").apply { mkdirs() }
             val exportFile = File(cachePath, "synap_database.redb")
-
             exportFile.outputStream().use { output ->
                 synapService.exportDatabase(output).getOrThrow()
             }
-
             val authority = "$packageName.fileprovider"
             val uri = FileProvider.getUriForFile(this@MainActivity, authority, exportFile)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -67,7 +95,6 @@ class MainActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-
             withContext(Dispatchers.Main) {
                 startActivity(Intent.createChooser(shareIntent, "分享数据库"))
             }

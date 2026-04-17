@@ -14,20 +14,23 @@ class QuickNoteWidget : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_quick_note)
 
-            // 1. 动态获取当前激活的 Launcher 组件 (自动识别 Main 或 MainActivityOld)
+            // 1. 动态获取当前激活的 Launcher 组件
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             val componentName = launchIntent?.component
 
-            // 2. 构造指向该组件的 VIEW 动作
+            // 2. 构造意图
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("synap://editor")).apply {
                 component = componentName
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                // ========== 终极修复：使用 CLEAR_TASK ==========
+                // NEW_TASK + CLEAR_TASK 的组合，会瞬间清空 App 之前的所有后台页面，
+                // 完美模拟了“杀掉进程重新打开”的干净状态，每次点击 100% 触发全新启动的 DeepLink！
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             }
 
-            // 3. 使用 appWidgetId 作为 requestCode，确保每个小组件的意图都是唯一的
+            // 3. 构造 PendingIntent
             val pendingIntent = PendingIntent.getActivity(
                 context,
-                appWidgetId, // 重要：使用唯一 ID 避免意图被系统缓存覆盖
+                appWidgetId,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )

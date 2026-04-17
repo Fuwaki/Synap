@@ -36,8 +36,8 @@ class MainActivity : AppCompatActivity() {
             uiState.isLoading && uiState.errorMessage == null && (currentTime - startTime < timeout)
         }
 
-        // ========== 新增：处理冷启动时的选词分享 ==========
-        handleProcessTextIntent(intent)
+        // ========== 修改：处理冷启动时的外部文字传入 ==========
+        handleExternalTextIntent(intent)
 
         setContent {
             SynapApp(activity = this)
@@ -45,21 +45,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
-        // ========== 新增：处理热启动（App在后台）时的选词分享 ==========
-        handleProcessTextIntent(intent)
+        // ========== 修改：处理热启动（App在后台）时的外部文字传入 ==========
+        handleExternalTextIntent(intent)
         setIntent(intent)
         super.onNewIntent(intent)
     }
 
-    // ========== 核心魔改逻辑：拦截文本，转化为内部 DeepLink ==========
-    private fun handleProcessTextIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_PROCESS_TEXT) {
-            val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
-            if (!text.isNullOrBlank()) {
-                // 强制篡改 Intent，让 Compose Navigation 误以为这是一个 DeepLink 跳转
-                intent.action = Intent.ACTION_VIEW
-                intent.data = Uri.parse("synap://editor?initialContent=${Uri.encode(text)}")
-            }
+    // ========== 核心逻辑升级：同时兼容“选词菜单”和“系统分享” ==========
+    private fun handleExternalTextIntent(intent: Intent?) {
+        if (intent == null) return
+
+        var extractedText: String? = null
+
+        // 1. 处理系统选词菜单 (ACTION_PROCESS_TEXT)
+        if (intent.action == Intent.ACTION_PROCESS_TEXT) {
+            extractedText = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+        }
+        // 2. 处理系统分享菜单 (ACTION_SEND)
+        else if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            extractedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+        }
+
+        // 如果成功提取到文字，统一转换为新建笔记的 DeepLink
+        if (!extractedText.isNullOrBlank()) {
+            intent.action = Intent.ACTION_VIEW
+            intent.data = Uri.parse("synap://editor?initialContent=${Uri.encode(extractedText)}")
         }
     }
 

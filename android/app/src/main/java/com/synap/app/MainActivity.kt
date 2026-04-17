@@ -36,18 +36,31 @@ class MainActivity : AppCompatActivity() {
             uiState.isLoading && uiState.errorMessage == null && (currentTime - startTime < timeout)
         }
 
+        // ========== 新增：处理冷启动时的选词分享 ==========
+        handleProcessTextIntent(intent)
+
         setContent {
-            // 确保应用能实时响应当前 Activity 的 Intent
             SynapApp(activity = this)
         }
     }
 
-    // ========== 核心修复：先更新 Intent，再调用父类 ==========
     override fun onNewIntent(intent: Intent) {
-        // 重要：顺序不能错！必须在 super 之前 setIntent
-        // 这样 Jetpack Compose 导航框架在 super 内部执行路由检查时，才能拿到最新的跳转参数
+        // ========== 新增：处理热启动（App在后台）时的选词分享 ==========
+        handleProcessTextIntent(intent)
         setIntent(intent)
         super.onNewIntent(intent)
+    }
+
+    // ========== 核心魔改逻辑：拦截文本，转化为内部 DeepLink ==========
+    private fun handleProcessTextIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_PROCESS_TEXT) {
+            val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            if (!text.isNullOrBlank()) {
+                // 强制篡改 Intent，让 Compose Navigation 误以为这是一个 DeepLink 跳转
+                intent.action = Intent.ACTION_VIEW
+                intent.data = Uri.parse("synap://editor?initialContent=${Uri.encode(text)}")
+            }
+        }
     }
 
     suspend fun exportDatabaseToUri(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {

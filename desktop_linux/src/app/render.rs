@@ -40,6 +40,10 @@ pub fn render(state: &AppState, widgets: &AppWidgets) {
     }
 
     match state.content_view {
+        crate::domain::ContentView::NoteDetail => {
+            widgets.content_stack.set_visible_child_name("detail");
+            render_note_detail(state, widgets);
+        }
         crate::domain::ContentView::Settings => {
             widgets.content_stack.set_visible_child_name("settings");
         }
@@ -48,6 +52,42 @@ pub fn render(state: &AppState, widgets: &AppWidgets) {
             rebuild_note_list(state, widgets);
         }
     }
+}
+
+fn render_note_detail(state: &AppState, widgets: &AppWidgets) {
+    let Some(detail) = &state.selected_note_detail else {
+        widgets.detail_meta_label.set_text("未选择笔记");
+        widgets
+            .detail_content_label
+            .set_text("请先从列表中打开一条笔记。 ");
+        widgets.detail_tags_label.set_text("");
+        widgets.detail_edit_button.set_sensitive(false);
+        widgets.detail_delete_button.set_sensitive(false);
+        return;
+    };
+
+    widgets.detail_meta_label.set_text(&format!(
+        "创建于 {}{}",
+        detail.created_at_label,
+        if detail.deleted { " · 已删除" } else { "" }
+    ));
+    widgets.detail_content_label.set_text(&detail.content);
+
+    if detail.tags.is_empty() {
+        widgets.detail_tags_label.set_text("暂无标签");
+    } else {
+        widgets.detail_tags_label.set_text(
+            &detail
+                .tags
+                .iter()
+                .map(|tag| format!("#{tag}"))
+                .collect::<Vec<_>>()
+                .join("  "),
+        );
+    }
+
+    widgets.detail_edit_button.set_sensitive(!detail.deleted);
+    widgets.detail_delete_button.set_sensitive(!detail.deleted);
 }
 
 fn rebuild_note_list(state: &AppState, widgets: &AppWidgets) {
@@ -100,6 +140,10 @@ fn empty_copy(state: &AppState) -> (String, String) {
         crate::domain::ContentView::Trash => (
             "回收站中没有匹配项".to_string(),
             format!("回收站里没有与\"{}\"相关的内容。", query),
+        ),
+        crate::domain::ContentView::NoteDetail => (
+            "没有可展示的笔记".to_string(),
+            "请先从笔记列表中打开一条笔记。".to_string(),
         ),
         crate::domain::ContentView::Settings => (
             "设置正在整理中".to_string(),

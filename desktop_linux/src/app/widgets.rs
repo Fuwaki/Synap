@@ -18,6 +18,11 @@ pub struct AppWidgets {
     pub list_box: gtk::ListBox,
     pub empty_title_label: gtk::Label,
     pub empty_body_label: gtk::Label,
+    pub detail_meta_label: gtk::Label,
+    pub detail_content_label: gtk::Label,
+    pub detail_tags_label: gtk::Label,
+    pub detail_edit_button: gtk::Button,
+    pub detail_delete_button: gtk::Button,
     pub create_note_button: gtk::Button,
     pub trash_button: gtk::Button,
     pub settings_button: gtk::Button,
@@ -107,6 +112,7 @@ pub fn build_widgets(app: &gtk::Application) -> AppWidgets {
     let list_box = gtk::ListBox::new();
     list_box.add_css_class("note-list");
     list_box.set_selection_mode(gtk::SelectionMode::Single);
+    list_box.set_activate_on_single_click(true);
     list_box.set_vexpand(true);
 
     let list_scroller = gtk::ScrolledWindow::new();
@@ -130,12 +136,51 @@ pub fn build_widgets(app: &gtk::Application) -> AppWidgets {
     content_stack.set_hexpand(true);
     content_stack.set_vexpand(true);
 
+    let detail_shell = gtk::Box::new(gtk::Orientation::Vertical, 18);
+    detail_shell.add_css_class("detail-shell");
+    detail_shell.set_hexpand(true);
+    detail_shell.set_vexpand(true);
+
+    let detail_actions = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    detail_actions.set_halign(gtk::Align::End);
+
+    let detail_edit_button = gtk::Button::with_label("编辑笔记");
+    detail_edit_button.add_css_class("editor-secondary-action");
+
+    let detail_delete_button = gtk::Button::with_label("删除笔记");
+    detail_delete_button.add_css_class("detail-delete-button");
+
+    detail_actions.append(&detail_edit_button);
+    detail_actions.append(&detail_delete_button);
+
+    let detail_meta_label = gtk::Label::new(None);
+    detail_meta_label.add_css_class("detail-meta");
+    detail_meta_label.set_xalign(0.0);
+
+    let detail_content_label = gtk::Label::new(None);
+    detail_content_label.add_css_class("detail-content");
+    detail_content_label.set_xalign(0.0);
+    detail_content_label.set_wrap(true);
+    detail_content_label.set_selectable(true);
+
+    let detail_tags_label = gtk::Label::new(None);
+    detail_tags_label.add_css_class("detail-tags");
+    detail_tags_label.set_xalign(0.0);
+    detail_tags_label.set_wrap(true);
+    detail_tags_label.set_selectable(true);
+
+    detail_shell.append(&detail_actions);
+    detail_shell.append(&detail_meta_label);
+    detail_shell.append(&detail_content_label);
+    detail_shell.append(&detail_tags_label);
+
     let (settings_placeholder, _, _) = build_placeholder(
         "设置正在整理中",
         "桌面 Linux 端的设置页会在后续阶段补齐，目前先保留占位。",
     );
 
     content_stack.add_named(&list_stack, Some("notes"));
+    content_stack.add_named(&detail_shell, Some("detail"));
     content_stack.add_named(&settings_placeholder, Some("settings"));
 
     content_pane.append(&toolbar);
@@ -159,6 +204,11 @@ pub fn build_widgets(app: &gtk::Application) -> AppWidgets {
         list_box,
         empty_title_label,
         empty_body_label,
+        detail_meta_label,
+        detail_content_label,
+        detail_tags_label,
+        detail_edit_button,
+        detail_delete_button,
         create_note_button,
         trash_button,
         settings_button,

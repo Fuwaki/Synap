@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 gtk = { package = "gtk4", version = "0.11.2", features = ["v4_22"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 synap-core = { path = "../core", version = "0.1.0" }

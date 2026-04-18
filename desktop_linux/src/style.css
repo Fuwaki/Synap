@@ -27,11 +27,10 @@ button.nav-button {
   background: transparent;
   color: #111111;
   box-shadow: none;
-  transition: background 160ms ease;
 }
 
 button.nav-button > label {
-  width: 100%;
+  min-width: 0;
 }
 
 button.nav-button:hover {
@@ -316,6 +315,48 @@ dropdown.layout-selector-dropdown popover listview row:hover .layout-selector-it
 .placeholder-body {
   color: #6b7280;
   font-size: 15px;
+}
+
+.detail-shell {
+  border: 1px solid #d6d6d6;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 24px;
+}
+
+.detail-meta {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.detail-content {
+  color: #111111;
+  font-size: 19px;
+  line-height: 1.7;
+}
+
+.detail-tags {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+button.detail-delete-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 1px solid #dc2626;
+  background: #ffffff;
+  color: #dc2626;
+  box-shadow: none;
+}
+
+button.detail-delete-button:hover,
+button.detail-delete-button:active,
+button.detail-delete-button:focus,
+button.detail-delete-button:focus-visible {
+  background: #fff5f5;
+  color: #dc2626;
+  box-shadow: none;
 }
 
 .editor-window {

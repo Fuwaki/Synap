@@ -5,7 +5,7 @@ pub type CoreResult<T> = Result<T, ServiceError>;
 pub trait DesktopCore {
     fn recent_notes(&self, cursor: Option<&str>, limit: Option<usize>) -> CoreResult<Vec<NoteDTO>>;
     fn deleted_notes(&self, cursor: Option<&str>, limit: Option<usize>)
-    -> CoreResult<Vec<NoteDTO>>;
+        -> CoreResult<Vec<NoteDTO>>;
     fn search(&self, query: &str, limit: usize) -> CoreResult<Vec<NoteDTO>>;
 
     fn get_note(&self, id: &str) -> CoreResult<NoteDTO>;

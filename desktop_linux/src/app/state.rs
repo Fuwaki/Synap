@@ -36,6 +36,27 @@ pub fn switch_content_view(
     render_from_state(state, widgets);
 }
 
+pub fn open_note_detail(state: &Rc<RefCell<AppState>>, widgets: &AppWidgets, note_id: String) {
+    {
+        let mut app_state = state.borrow_mut();
+        let detail_source = app_state
+            .home
+            .notes
+            .iter()
+            .chain(app_state.home.deleted_notes.iter())
+            .find(|note| note.id == note_id)
+            .cloned();
+        app_state.selected_note_id = Some(note_id);
+        app_state.selected_note_detail = detail_source
+            .as_ref()
+            .map(crate::domain::NoteDetailViewModel::from);
+        app_state.content_view = ContentView::NoteDetail;
+        app_state.sync_selection();
+    }
+
+    render_from_state(state, widgets);
+}
+
 pub fn refresh_home(
     state: &Rc<RefCell<AppState>>,
     widgets: &AppWidgets,

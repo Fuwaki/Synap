@@ -108,4 +108,80 @@ pub fn connect_handlers(
 
         render_from_state(&state_for_selection, &widgets_for_selection);
     });
+
+    let widgets_for_open = widgets.clone();
+    let state_for_open = state.clone();
+    widgets.list_box.connect_row_activated(move |_, row| {
+        let index = row.index();
+        if index < 0 {
+            return;
+        }
+
+        let note_id = {
+            let app_state = state_for_open.borrow();
+            app_state
+                .visible_notes()
+                .get(index as usize)
+                .map(|note| note.id.clone())
+        };
+
+        let Some(note_id) = note_id else {
+            return;
+        };
+
+        super::state::open_note_detail(&state_for_open, &widgets_for_open, note_id);
+    });
+
+    let widgets_for_edit = widgets.clone();
+    let state_for_edit = state.clone();
+    let core_for_edit = core.clone();
+    widgets.detail_edit_button.connect_clicked(move |_| {
+        let note = { state_for_edit.borrow().selected_note_detail.clone() };
+        let Some(note) = note else {
+            return;
+        };
+
+        super::dialog::open_edit_note_window(
+            &widgets_for_edit.window,
+            state_for_edit.clone(),
+            widgets_for_edit.clone(),
+            core_for_edit.clone(),
+            note.id,
+            note.content,
+            note.tags,
+        );
+    });
+
+    let widgets_for_delete = widgets.clone();
+    let state_for_delete = state.clone();
+    let core_for_delete = core.clone();
+    widgets.detail_delete_button.connect_clicked(move |_| {
+        let note_id = { state_for_delete.borrow().selected_note_id.clone() };
+        let Some(note_id) = note_id else {
+            return;
+        };
+
+        match core_for_delete.delete_note(&note_id) {
+            Ok(()) => {
+                {
+                    let mut app_state = state_for_delete.borrow_mut();
+                    app_state.content_view = ContentView::Notes;
+                }
+                refresh_home(
+                    &state_for_delete,
+                    &widgets_for_delete,
+                    &core_for_delete,
+                    None,
+                    Some("已删除笔记".to_string()),
+                );
+            }
+            Err(error) => {
+                {
+                    let mut app_state = state_for_delete.borrow_mut();
+                    app_state.status = Some(format!("删除失败: {error}"));
+                }
+                render_from_state(&state_for_delete, &widgets_for_delete);
+            }
+        }
+    });
 }

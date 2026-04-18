@@ -3,6 +3,7 @@ use synap_core::dto::NoteDTO;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContentView {
     Notes,
+    NoteDetail,
     Trash,
     Settings,
 }
@@ -11,6 +12,7 @@ impl ContentView {
     pub fn title(self) -> &'static str {
         match self {
             Self::Notes => "笔记列表",
+            Self::NoteDetail => "笔记详情",
             Self::Trash => "回收站",
             Self::Settings => "设置",
         }
@@ -57,10 +59,31 @@ pub struct NoteListItemViewModel {
     pub preview: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct NoteDetailViewModel {
+    pub id: String,
+    pub content: String,
+    pub tags: Vec<String>,
+    pub created_at_label: String,
+    pub deleted: bool,
+}
+
 impl From<&NoteDTO> for NoteListItemViewModel {
     fn from(value: &NoteDTO) -> Self {
         Self {
             preview: build_preview(&value.content),
+        }
+    }
+}
+
+impl From<&NoteDTO> for NoteDetailViewModel {
+    fn from(value: &NoteDTO) -> Self {
+        Self {
+            id: value.id.clone(),
+            content: value.content.clone(),
+            tags: value.tags.clone(),
+            created_at_label: format_timestamp(value.created_at),
+            deleted: value.deleted,
         }
     }
 }
@@ -72,6 +95,7 @@ pub struct AppState {
     pub content_view: ContentView,
     pub layout: NoteLayout,
     pub selected_note_id: Option<String>,
+    pub selected_note_detail: Option<NoteDetailViewModel>,
     pub status: Option<String>,
 }
 
@@ -83,6 +107,7 @@ impl Default for AppState {
             content_view: ContentView::Notes,
             layout: NoteLayout::Waterfall,
             selected_note_id: None,
+            selected_note_detail: None,
             status: None,
         }
     }
@@ -92,6 +117,17 @@ impl AppState {
     pub fn visible_notes(&self) -> Vec<NoteDTO> {
         match self.content_view {
             ContentView::Notes => self.home.notes.clone(),
+            ContentView::NoteDetail => self
+                .selected_note_detail
+                .as_ref()
+                .map(|detail| {
+                    if detail.deleted {
+                        self.home.deleted_notes.clone()
+                    } else {
+                        self.home.notes.clone()
+                    }
+                })
+                .unwrap_or_else(|| self.home.notes.clone()),
             ContentView::Trash => {
                 filter_deleted_notes(&self.home.deleted_notes, &self.search_query)
             }
@@ -113,6 +149,12 @@ impl AppState {
         if !is_selected_visible {
             self.selected_note_id = visible.first().map(|note| note.id.clone());
         }
+
+        self.selected_note_detail = self
+            .selected_note_id
+            .as_ref()
+            .and_then(|selected_id| visible.iter().find(|note| note.id == *selected_id))
+            .map(NoteDetailViewModel::from);
     }
 
     pub fn selected_index_in(&self, notes: &[NoteDTO]) -> Option<usize> {
@@ -156,4 +198,12 @@ fn build_preview(content: &str) -> String {
         let preview: String = normalized.chars().take(MAX_CHARS).collect();
         format!("{preview}...")
     }
+}
+
+fn format_timestamp(timestamp_ms: u64) -> String {
+    use std::time::{Duration, UNIX_EPOCH};
+
+    let timestamp = UNIX_EPOCH + Duration::from_millis(timestamp_ms);
+    let datetime = chrono::DateTime::<chrono::Local>::from(timestamp);
+    datetime.format("%Y-%m-%d %H:%M").to_string()
 }

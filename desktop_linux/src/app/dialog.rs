@@ -11,8 +11,79 @@ pub fn open_create_note_window(
     widgets: AppWidgets,
     core: std::rc::Rc<dyn DesktopCore>,
 ) {
+    open_note_editor_window(
+        parent,
+        state,
+        widgets,
+        core,
+        NoteEditorMode::Create,
+        "新建笔记",
+        "直接记录内容；标签可选，使用逗号分隔。",
+        String::new(),
+        Vec::new(),
+    );
+}
+
+pub fn open_edit_note_window(
+    parent: &gtk::ApplicationWindow,
+    state: std::rc::Rc<std::cell::RefCell<AppState>>,
+    widgets: AppWidgets,
+    core: std::rc::Rc<dyn DesktopCore>,
+    note_id: String,
+    content: String,
+    tags: Vec<String>,
+) {
+    open_note_editor_window(
+        parent,
+        state,
+        widgets,
+        core,
+        NoteEditorMode::Edit { note_id },
+        "编辑笔记",
+        "修改正文或标签，保存后会立即更新详情。",
+        content,
+        tags,
+    );
+}
+
+enum NoteEditorMode {
+    Create,
+    Edit { note_id: String },
+}
+
+impl NoteEditorMode {
+    fn status_message(&self) -> &'static str {
+        match self {
+            Self::Create => "已创建笔记",
+            Self::Edit { .. } => "已更新笔记",
+        }
+    }
+
+    fn target_content_view(&self) -> ContentView {
+        match self {
+            Self::Create => ContentView::Notes,
+            Self::Edit { .. } => ContentView::NoteDetail,
+        }
+    }
+
+    fn is_create(&self) -> bool {
+        matches!(self, Self::Create)
+    }
+}
+
+fn open_note_editor_window(
+    parent: &gtk::ApplicationWindow,
+    state: std::rc::Rc<std::cell::RefCell<AppState>>,
+    widgets: AppWidgets,
+    core: std::rc::Rc<dyn DesktopCore>,
+    mode: NoteEditorMode,
+    title_text: &str,
+    hint_text: &str,
+    initial_content: String,
+    initial_tags: Vec<String>,
+) {
     let dialog = gtk::Window::builder()
-        .title("新建笔记")
+        .title(title_text)
         .default_width(720)
         .default_height(560)
         .modal(true)
@@ -36,15 +107,16 @@ pub fn open_create_note_window(
     shell.set_hexpand(true);
     shell.set_vexpand(true);
 
-    let title = gtk::Label::new(Some("新建笔记"));
+    let title = gtk::Label::new(Some(title_text));
     title.add_css_class("editor-title");
     title.set_xalign(0.0);
 
-    let hint = gtk::Label::new(Some("直接记录内容；标签可选，使用逗号分隔。"));
+    let hint = gtk::Label::new(Some(hint_text));
     hint.add_css_class("editor-hint");
     hint.set_xalign(0.0);
 
     let content_buffer = gtk::TextBuffer::new(None);
+    content_buffer.set_text(&initial_content);
     let content_view = gtk::TextView::with_buffer(&content_buffer);
     content_view.add_css_class("editor-text-view");
     content_view.set_widget_name("editor-text-view");
@@ -67,6 +139,7 @@ pub fn open_create_note_window(
     let tags_entry = gtk::Entry::new();
     tags_entry.add_css_class("editor-tags-entry");
     tags_entry.set_placeholder_text(Some("标签，例如 rust, idea, diary"));
+    tags_entry.set_text(&initial_tags.join(", "));
 
     let dialog_status = gtk::Label::new(None);
     dialog_status.add_css_class("status-label");
@@ -105,6 +178,9 @@ pub fn open_create_note_window(
     let core_for_save = core.clone();
     let tags_entry_for_save = tags_entry.clone();
     let dialog_status_for_save = dialog_status.clone();
+    let target_content_view = mode.target_content_view();
+    let success_status = mode.status_message().to_string();
+    let is_create = mode.is_create();
     save_button.connect_clicked(move |_| {
         let (start, end) = content_buffer.bounds();
         let content = content_buffer.text(&start, &end, false).to_string();
@@ -116,15 +192,21 @@ pub fn open_create_note_window(
             return;
         }
 
-        match core_for_save.create_note(trimmed, parse_tags(&tags_entry_for_save.text())) {
+        let tags = parse_tags(&tags_entry_for_save.text());
+        let result = match &mode {
+            NoteEditorMode::Create => core_for_save.create_note(trimmed, tags),
+            NoteEditorMode::Edit { note_id } => core_for_save.edit_note(note_id, trimmed, tags),
+        };
+
+        match result {
             Ok(note) => {
                 {
                     let mut app_state = state_for_save.borrow_mut();
-                    app_state.content_view = ContentView::Notes;
+                    app_state.content_view = target_content_view;
                     app_state.search_query.clear();
                 }
 
-                if !widgets_for_save.search_entry.text().is_empty() {
+                if is_create && !widgets_for_save.search_entry.text().is_empty() {
                     widgets_for_save.search_entry.set_text("");
                 }
 
@@ -133,12 +215,12 @@ pub fn open_create_note_window(
                     &widgets_for_save,
                     &core_for_save,
                     Some(note.id),
-                    Some("已创建笔记".to_string()),
+                    Some(success_status.clone()),
                 );
                 dialog_for_save.close();
             }
             Err(error) => {
-                dialog_status_for_save.set_text(&format!("创建失败: {error}"));
+                dialog_status_for_save.set_text(&format!("保存失败: {error}"));
                 dialog_status_for_save.set_visible(true);
             }
         }

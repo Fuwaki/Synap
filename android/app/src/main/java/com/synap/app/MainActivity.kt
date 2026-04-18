@@ -36,7 +36,7 @@ class MainActivity : AppCompatActivity() {
             uiState.isLoading && uiState.errorMessage == null && (currentTime - startTime < timeout)
         }
 
-        // ========== 修改：处理冷启动时的外部文字传入 ==========
+        // ========== 处理冷启动时的外部文字传入 ==========
         handleExternalTextIntent(intent)
 
         setContent {
@@ -45,32 +45,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
-        // ========== 修改：处理热启动（App在后台）时的外部文字传入 ==========
-        handleExternalTextIntent(intent)
-        setIntent(intent)
         super.onNewIntent(intent)
+        setIntent(intent)
+
+        // ========== 核心修复：处理热启动（App在后台） ==========
+        // 如果成功拦截到分享文字，强制通过 CLEAR_TASK 重启，以完美触发 Compose 的深层链接
+        if (handleExternalTextIntent(intent)) {
+            val restartIntent = Intent(intent).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(restartIntent)
+        }
     }
 
-    // ========== 核心逻辑升级：同时兼容“选词菜单”和“系统分享” ==========
-    private fun handleExternalTextIntent(intent: Intent?) {
-        if (intent == null) return
+    // ========== 逻辑升级：返回 Boolean，并清理已处理的数据 ==========
+    private fun handleExternalTextIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
 
         var extractedText: String? = null
 
-        // 1. 处理系统选词菜单 (ACTION_PROCESS_TEXT)
+        // 1. 处理系统选词菜单
         if (intent.action == Intent.ACTION_PROCESS_TEXT) {
             extractedText = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
         }
-        // 2. 处理系统分享菜单 (ACTION_SEND)
-        else if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+        // 2. 处理系统分享菜单 (放宽了类型判断，兼容更多 App 传来的文本)
+        else if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) {
             extractedText = intent.getStringExtra(Intent.EXTRA_TEXT)
         }
 
-        // 如果成功提取到文字，统一转换为新建笔记的 DeepLink
         if (!extractedText.isNullOrBlank()) {
+            // 将 Intent 篡改为单纯的 DeepLink
             intent.action = Intent.ACTION_VIEW
             intent.data = Uri.parse("synap://editor?initialContent=${Uri.encode(extractedText)}")
+
+            // 重要：清理掉原有的文本 Extra，防止页面重启后被重复处理
+            intent.removeExtra(Intent.EXTRA_PROCESS_TEXT)
+            intent.removeExtra(Intent.EXTRA_TEXT)
+            return true
         }
+        return false
     }
 
     suspend fun exportDatabaseToUri(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {

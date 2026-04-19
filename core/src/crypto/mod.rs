@@ -6,6 +6,7 @@ mod trust;
 
 pub use channel::{
     AuthenticatedPeer, CryptoChannel, CryptoChannelError, CryptoChannelMode, CryptoChannelOptions,
+    PeerIdentity,
 };
 pub use fingerprint::generate_kaomoji_fingerprint;
 pub use identity::{
@@ -21,5 +22,5 @@ pub use trust::{
     get_trusted_public_key, get_trusted_public_key_by_bytes, import_trusted_public_key,
     is_trusted_public_key, list_known_public_keys, list_trusted_public_keys,
     public_key_fingerprint, remember_untrusted_public_key, update_trusted_public_key_note,
-    TrustedPublicKeyRecord,
+    update_trusted_public_key_status, TrustedPublicKeyRecord,
 };

@@ -5268,6 +5268,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "base64",
  "chacha20poly1305",
  "divan",
  "ed25519-dalek",

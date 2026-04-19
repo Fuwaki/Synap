@@ -179,9 +179,30 @@ fun SynapNavGraph(
                         onNavigateToTypographySettings = { navController.navigate("typography_settings") },
                         onNavigateToLanguageSelection = { navController.navigate("language_selection") },
                         onNavigateToAppIcon = { navController.navigate("app_icon") },
+                        onNavigateToSync = { navController.navigate("sync") },
                         onNavigateToTeam = { navController.navigate("team") },
                         onNavigateToTutorial = { navController.navigate("tutorial") },
                         onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable("sync") {
+                    val viewModel: SyncViewModel = hiltViewModel()
+                    val uiState by viewModel.uiState.collectAsState()
+
+                    SyncScreen(
+                        uiState = uiState,
+                        onRefresh = viewModel::refresh,
+                        onAddConnection = viewModel::addConnection,
+                        onDeleteConnection = viewModel::deleteConnection,
+                        onPairConnection = viewModel::pairConnection,
+                        onPairDiscoveredPeer = viewModel::pairDiscoveredPeer,
+                        onTrustPeer = viewModel::trustPeer,
+                        onUpdatePeerNote = viewModel::updatePeerNote,
+                        onDeletePeer = viewModel::deletePeer,
+                        onSetPeerStatus = viewModel::setPeerStatus,
+                        onDismissPendingTrustPrompt = viewModel::dismissPendingTrustPrompt,
+                        onNavigateBack = { navController.popBackStack() },
                     )
                 }
 

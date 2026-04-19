@@ -183,6 +183,23 @@ pub fn update_trusted_public_key_note(
     Ok(Some(trusted_record_from_metadata(metadata)?))
 }
 
+pub fn update_trusted_public_key_status(
+    writer: &CryptoWriter<'_>,
+    id: Uuid,
+    status: KeyStatus,
+) -> Result<Option<TrustedPublicKeyRecord>, redb::Error> {
+    let Some(mut metadata) = writer.get_metadata(id)? else {
+        return Ok(None);
+    };
+    if metadata.purpose != KeyPurpose::TrustAnchor {
+        return Ok(None);
+    }
+
+    metadata.status = status;
+    writer.put_metadata(&metadata)?;
+    Ok(Some(trusted_record_from_metadata(metadata)?))
+}
+
 pub fn delete_trusted_public_key(writer: &CryptoWriter<'_>, id: Uuid) -> Result<bool, redb::Error> {
     let Some(metadata) = writer.get_metadata(id)? else {
         return Ok(false);

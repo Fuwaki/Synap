@@ -7,6 +7,7 @@ use std::{
 use tempfile::tempdir;
 
 use crate::{
+    models::sync_stats::{SyncSessionRole, SyncSessionStatus, SyncStatsReader, SyncStatsRecord},
     service::SynapService,
     sync::{SyncConfig, SyncService, SyncStats},
 };
@@ -121,6 +122,20 @@ fn run_facade_sync(
 
         (initiator.join().unwrap(), listener.join().unwrap())
     })
+}
+
+fn read_sync_records(service: &SynapService) -> Vec<SyncStatsRecord> {
+    service
+        .with_read(|tx, _reader| {
+            let reader = SyncStatsReader::new(tx)?;
+            let records = reader
+                .all()
+                .map_err(redb::Error::from)?
+                .map(|item| item.map_err(redb::Error::from))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(records)
+        })
+        .unwrap()
 }
 
 #[test]
@@ -284,6 +299,25 @@ fn test_sync_facade_runs_through_crypto_channel() {
 
     let fetched = service_b.get_note(&note_a.id).unwrap();
     assert_eq!(fetched.content, "facade sync note");
+
+    let records_a = read_sync_records(&service_a);
+    let records_b = read_sync_records(&service_b);
+    assert_eq!(records_a.len(), 1);
+    assert_eq!(records_b.len(), 1);
+    assert_eq!(records_a[0].role, SyncSessionRole::Initiator);
+    assert_eq!(records_b[0].role, SyncSessionRole::Listener);
+    assert_eq!(records_a[0].status, SyncSessionStatus::Completed);
+    assert_eq!(records_b[0].status, SyncSessionStatus::Completed);
+    assert_eq!(
+        records_a[0].peer_public_key.as_deref(),
+        Some(local_b.signing.public_key.as_slice())
+    );
+    assert_eq!(
+        records_b[0].peer_public_key.as_deref(),
+        Some(local_a.signing.public_key.as_slice())
+    );
+    assert_eq!(records_a[0].peer_label.as_deref(), Some("peer-b"));
+    assert_eq!(records_b[0].peer_label.as_deref(), Some("peer-a"));
 }
 
 #[test]

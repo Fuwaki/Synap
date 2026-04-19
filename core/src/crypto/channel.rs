@@ -5,6 +5,7 @@ use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use thiserror::Error;
+use uuid::Uuid;
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
 use crate::{
@@ -38,10 +39,19 @@ pub struct AuthenticatedPeer {
     pub trust_record: TrustedPublicKeyRecord,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerIdentity {
+    pub key_id: Uuid,
+    pub public_key: [u8; 32],
+    pub fingerprint: [u8; 32],
+    pub label: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CryptoChannelOptions {
     pub mode: CryptoChannelMode,
     pub max_frame_len: usize,
+    pub expected_signing_public_key: Option<[u8; 32]>,
 }
 
 impl Default for CryptoChannelOptions {
@@ -49,6 +59,7 @@ impl Default for CryptoChannelOptions {
         Self {
             mode: CryptoChannelMode::Plaintext,
             max_frame_len: MAX_FRAME_LEN,
+            expected_signing_public_key: None,
         }
     }
 }
@@ -92,6 +103,13 @@ pub enum CryptoChannelError {
     UntrustedPeer {
         public_key: [u8; 32],
         fingerprint: [u8; 32],
+    },
+
+    #[error("peer signing public key does not match expected identity")]
+    PeerIdentityMismatch {
+        expected_public_key: [u8; 32],
+        actual_public_key: [u8; 32],
+        actual_fingerprint: [u8; 32],
     },
 
     #[error("peer signature verification failed")]
@@ -178,7 +196,17 @@ where
 
         let peer_bytes = read_packet(&mut inner, options.max_frame_len)?;
         let peer_hello: HandshakeHello = postcard::from_bytes(&peer_bytes).map_err(invalid_data)?;
-        validate_peer_hello(reader, &peer_hello, options.mode)?;
+        validate_peer_hello(&peer_hello, options.mode)?;
+
+        if let Some(expected_public_key) = options.expected_signing_public_key {
+            if peer_hello.signing_public_key != expected_public_key {
+                return Err(CryptoChannelError::PeerIdentityMismatch {
+                    expected_public_key,
+                    actual_public_key: peer_hello.signing_public_key,
+                    actual_fingerprint: public_key_fingerprint(&peer_hello.signing_public_key),
+                });
+            }
+        }
 
         let trust_record = get_trusted_public_key_by_bytes(reader, peer_hello.signing_public_key)?
             .ok_or(CryptoChannelError::UntrustedPeer {
@@ -284,6 +312,21 @@ where
     }
 }
 
+impl AuthenticatedPeer {
+    pub fn identity(&self) -> PeerIdentity {
+        PeerIdentity {
+            key_id: self.trust_record.id,
+            public_key: self.trust_record.public_key,
+            fingerprint: self.trust_record.fingerprint,
+            label: self.trust_record.note.clone(),
+        }
+    }
+
+    pub fn identity_label(&self) -> Option<&str> {
+        self.trust_record.note.as_deref()
+    }
+}
+
 impl<T> Read for CryptoChannel<T>
 where
     T: Read + Write + Send,
@@ -358,7 +401,6 @@ fn sign_handshake_hello(
 }
 
 fn validate_peer_hello(
-    reader: &CryptoReader<'_>,
     hello: &HandshakeHello,
     local_mode: CryptoChannelMode,
 ) -> Result<(), CryptoChannelError> {
@@ -400,12 +442,6 @@ fn validate_peer_hello(
     })?;
     if !verify_signed_bytes(hello.signing_public_key, &payload, signature) {
         return Err(CryptoChannelError::InvalidPeerSignature);
-    }
-    if get_trusted_public_key_by_bytes(reader, hello.signing_public_key)?.is_none() {
-        return Err(CryptoChannelError::UntrustedPeer {
-            public_key: hello.signing_public_key,
-            fingerprint: public_key_fingerprint(&hello.signing_public_key),
-        });
     }
 
     Ok(())
@@ -755,6 +791,67 @@ mod tests {
         assert!(matches!(
             client.join().unwrap(),
             Err(CryptoChannelError::UntrustedPeer { .. }) | Err(CryptoChannelError::Io(_))
+        ));
+    }
+
+    #[test]
+    fn test_crypto_channel_reports_peer_identity_mismatch_after_handshake() {
+        let (server_db, server_signing_public_key) = make_peer_db(None);
+        let (client_db, client_signing_public_key) = make_peer_db(Some(server_signing_public_key));
+        let unexpected_public_key = [77u8; 32];
+
+        {
+            let wtx = server_db.begin_write().unwrap();
+            let writer = CryptoWriter::new(&wtx);
+            import_trusted_public_key(&writer, client_signing_public_key, Some("client".into()))
+                .unwrap();
+            wtx.commit().unwrap();
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let rtx = server_db.begin_read().unwrap();
+            let reader = CryptoReader::new(&rtx).unwrap();
+            CryptoChannel::accept(
+                stream,
+                &reader,
+                CryptoChannelOptions {
+                    mode: CryptoChannelMode::Plaintext,
+                    expected_signing_public_key: Some(unexpected_public_key),
+                    ..Default::default()
+                },
+            )
+        });
+
+        let client = thread::spawn(move || {
+            let stream = TcpStream::connect(addr).unwrap();
+            let rtx = client_db.begin_read().unwrap();
+            let reader = CryptoReader::new(&rtx).unwrap();
+            CryptoChannel::connect(
+                stream,
+                &reader,
+                CryptoChannelOptions {
+                    mode: CryptoChannelMode::Plaintext,
+                    ..Default::default()
+                },
+            )
+        });
+
+        assert!(matches!(
+            server.join().unwrap(),
+            Err(CryptoChannelError::PeerIdentityMismatch {
+                expected_public_key,
+                actual_public_key,
+                ..
+            }) if expected_public_key == unexpected_public_key
+                && actual_public_key == client_signing_public_key
+        ));
+        assert!(matches!(
+            client.join().unwrap(),
+            Err(CryptoChannelError::Io(_)) | Ok(_)
         ));
     }
 }

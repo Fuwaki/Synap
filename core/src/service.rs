@@ -9,23 +9,27 @@ use crate::{
     crypto,
     dto::{
         LocalIdentityDTO, NoteDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, ShareStatsDTO,
-        SyncSessionDTO, SyncStatsDTO, SyncStatusDTO, TimelineNotesPageDTO, TimelineSessionDTO,
-        TimelineSessionsPageDTO,
+        SyncSessionDTO, SyncSessionRecordDTO, SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO,
+        TimelineNotesPageDTO, TimelineSessionDTO, TimelineSessionsPageDTO,
     },
     error::ServiceError,
     models::{
         crypto::{CryptoReader, CryptoWriter},
         note::{Note, NoteReader, NoteRef},
+        sync_stats::{
+            SyncSessionRole, SyncSessionStatus, SyncStatsReader, SyncStatsRecord, SyncStatsWriter,
+        },
         tag::{Tag, TagReader, TagWriter},
     },
     nlp::{NlpDocument, NlpTagIndex},
     search::searcher::FuzzyIndex,
-    sync::{ShareService, SyncService},
+    sync::{ShareService, SyncPeerIdentity, SyncService},
     views::{
         note_view::NoteView,
         timeline_view::{SessionDetectionConfig, SessionSpan, TimelinePoint, TimelineView},
     },
 };
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 
 use redb::{Database, ReadTransaction, ReadableDatabase, WriteTransaction};
 use std::ops::Bound;
@@ -239,6 +243,7 @@ impl SynapService {
         Note::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
         TagWriter::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
         CryptoWriter::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
+        SyncStatsWriter::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
         crypto::ensure_local_identity(&CryptoWriter::new(&tx))
             .map_err(|err| ServiceError::Db(err.into()))?;
         crypto::ensure_local_signing_identity(&CryptoWriter::new(&tx))
@@ -312,6 +317,76 @@ impl SynapService {
         Ok(Self::peer_to_dto(record))
     }
 
+    pub fn update_peer_note(
+        &self,
+        peer_id: &str,
+        note: Option<String>,
+    ) -> Result<PeerDTO, ServiceError> {
+        let peer_id = Self::parse_id(peer_id)?;
+        let tx = self.db.begin_write()?;
+        let writer = CryptoWriter::new(&tx);
+        let record = crypto::update_trusted_public_key_note(&writer, peer_id, note)?
+            .ok_or(ServiceError::NotFound(peer_id.to_string()))?;
+        tx.commit()?;
+        Ok(Self::peer_to_dto(record))
+    }
+
+    pub fn set_peer_status(
+        &self,
+        peer_id: &str,
+        status: PeerTrustStatusDTO,
+    ) -> Result<PeerDTO, ServiceError> {
+        let peer_id = Self::parse_id(peer_id)?;
+        let status = match status {
+            PeerTrustStatusDTO::Pending => crate::models::crypto::KeyStatus::Pending,
+            PeerTrustStatusDTO::Trusted => crate::models::crypto::KeyStatus::Active,
+            PeerTrustStatusDTO::Retired => crate::models::crypto::KeyStatus::Retired,
+            PeerTrustStatusDTO::Revoked => crate::models::crypto::KeyStatus::Revoked,
+        };
+        let tx = self.db.begin_write()?;
+        let writer = CryptoWriter::new(&tx);
+        let record = crypto::update_trusted_public_key_status(&writer, peer_id, status)?
+            .ok_or(ServiceError::NotFound(peer_id.to_string()))?;
+        tx.commit()?;
+        Ok(Self::peer_to_dto(record))
+    }
+
+    pub fn delete_peer(&self, peer_id: &str) -> Result<(), ServiceError> {
+        let peer_id = Self::parse_id(peer_id)?;
+        let tx = self.db.begin_write()?;
+        let writer = CryptoWriter::new(&tx);
+        if !crypto::delete_trusted_public_key(&writer, peer_id)? {
+            return Err(ServiceError::NotFound(peer_id.to_string()));
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_recent_sync_sessions(
+        &self,
+        limit: Option<usize>,
+    ) -> Result<Vec<SyncSessionRecordDTO>, ServiceError> {
+        let limit = limit.unwrap_or(10);
+        let tx = self.db.begin_read()?;
+        let reader = SyncStatsReader::new(&tx)?;
+        let mut records = reader
+            .all()
+            .map_err(redb::Error::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(redb::Error::from)?;
+        records.sort_by(|left, right| {
+            right
+                .finished_at_ms
+                .cmp(&left.finished_at_ms)
+                .then_with(|| right.started_at_ms.cmp(&left.started_at_ms))
+        });
+        records.truncate(limit);
+        Ok(records
+            .into_iter()
+            .map(Self::sync_stats_record_to_dto)
+            .collect())
+    }
+
     pub fn export_share(&self, note_ids: &[String]) -> Result<Vec<u8>, ServiceError> {
         let note_ids = Self::parse_ids(note_ids)?;
         ShareService::new(self).export_bytes(&note_ids)
@@ -345,15 +420,27 @@ impl SynapService {
     where
         T: Read + Write + Send,
     {
+        self.run_sync_session_with_options(transport, role, Default::default())
+    }
+
+    fn run_sync_session_with_options<T>(
+        &self,
+        transport: T,
+        role: ServiceSyncRole,
+        options: crypto::CryptoChannelOptions,
+    ) -> Result<SyncSessionDTO, ServiceError>
+    where
+        T: Read + Write + Send,
+    {
         let channel = {
             let tx = self.db.begin_read()?;
             let reader = CryptoReader::new(&tx)?;
             match role {
                 ServiceSyncRole::Initiator => {
-                    crypto::CryptoChannel::connect(transport, &reader, Default::default())
+                    crypto::CryptoChannel::connect(transport, &reader, options.clone())
                 }
                 ServiceSyncRole::Listener => {
-                    crypto::CryptoChannel::accept(transport, &reader, Default::default())
+                    crypto::CryptoChannel::accept(transport, &reader, options)
                 }
             }
         };
@@ -363,22 +450,17 @@ impl SynapService {
             Err(crypto::CryptoChannelError::UntrustedPeer {
                 public_key,
                 fingerprint: _fingerprint,
-            }) => {
-                let tx = self.db.begin_write()?;
-                let writer = CryptoWriter::new(&tx);
-                let record = crypto::remember_untrusted_public_key(&writer, public_key, None)?;
-                tx.commit()?;
-                return Ok(SyncSessionDTO {
-                    status: SyncStatusDTO::PendingTrust,
-                    peer: Self::peer_to_dto(record),
-                    stats: None,
-                });
-            }
+            }) => return self.pending_trust_session(public_key),
+            Err(crypto::CryptoChannelError::PeerIdentityMismatch {
+                actual_public_key, ..
+            }) => return self.pending_trust_session(actual_public_key),
             Err(err) => return Err(ServiceError::Other(anyhow::anyhow!(err))),
         };
 
         let peer = channel.peer().clone();
-        let sync_service = SyncService::new(self, Default::default());
+        let peer_identity = SyncPeerIdentity::from_authenticated_peer(&peer);
+        let sync_service =
+            SyncService::new(self, Default::default()).with_peer_identity(peer_identity);
         let stats = match role {
             ServiceSyncRole::Initiator => sync_service
                 .sync_as_initiator(&mut channel)
@@ -395,6 +477,18 @@ impl SynapService {
         })
     }
 
+    fn pending_trust_session(&self, public_key: [u8; 32]) -> Result<SyncSessionDTO, ServiceError> {
+        let tx = self.db.begin_write()?;
+        let writer = CryptoWriter::new(&tx);
+        let record = crypto::remember_untrusted_public_key(&writer, public_key, None)?;
+        tx.commit()?;
+        Ok(SyncSessionDTO {
+            status: SyncStatusDTO::PendingTrust,
+            peer: Self::peer_to_dto(record),
+            stats: None,
+        })
+    }
+
     fn public_key_info_to_dto(
         id: String,
         algorithm: String,
@@ -406,6 +500,7 @@ impl SynapService {
             algorithm,
             public_key: public_key.to_vec(),
             fingerprint: fingerprint.to_vec(),
+            display_public_key_base64: BASE64_STANDARD.encode(public_key),
             kaomoji_fingerprint: crypto::generate_kaomoji_fingerprint(&fingerprint),
         }
     }
@@ -438,6 +533,34 @@ impl SynapService {
             bytes_sent: stats.bytes_sent as u64,
             bytes_received: stats.bytes_received as u64,
             duration_ms: stats.duration_ms,
+        }
+    }
+
+    fn sync_stats_record_to_dto(record: SyncStatsRecord) -> SyncSessionRecordDTO {
+        SyncSessionRecordDTO {
+            id: record.id.to_string(),
+            role: match record.role {
+                SyncSessionRole::Initiator => SyncSessionRoleDTO::Initiator,
+                SyncSessionRole::Listener => SyncSessionRoleDTO::Listener,
+            },
+            status: match record.status {
+                SyncSessionStatus::Completed => SyncStatusDTO::Completed,
+                SyncSessionStatus::PendingTrust => SyncStatusDTO::PendingTrust,
+                SyncSessionStatus::Failed => SyncStatusDTO::Failed,
+            },
+            peer_label: record.peer_label,
+            peer_public_key: record.peer_public_key,
+            peer_fingerprint: record.peer_fingerprint,
+            started_at_ms: record.started_at_ms,
+            finished_at_ms: record.finished_at_ms,
+            records_sent: record.records_sent,
+            records_received: record.records_received,
+            records_applied: record.records_applied,
+            records_skipped: record.records_skipped,
+            bytes_sent: record.bytes_sent,
+            bytes_received: record.bytes_received,
+            duration_ms: record.duration_ms,
+            error_message: record.error_message,
         }
     }
 
@@ -1372,8 +1495,14 @@ mod tests {
 
         let reopened = SynapService::new(Some(db_path.to_string_lossy().into_owned())).unwrap();
         let reopened_identity = reopened.get_local_identity().unwrap();
-        assert_eq!(reopened_identity.identity.public_key, local_identity.identity.public_key);
-        assert_eq!(reopened_identity.signing.public_key, local_identity.signing.public_key);
+        assert_eq!(
+            reopened_identity.identity.public_key,
+            local_identity.identity.public_key
+        );
+        assert_eq!(
+            reopened_identity.signing.public_key,
+            local_identity.signing.public_key
+        );
     }
 
     #[test]

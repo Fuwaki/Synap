@@ -51,6 +51,7 @@ pub struct PublicKeyInfoDTO {
     pub algorithm: String,
     pub public_key: Vec<u8>,
     pub fingerprint: Vec<u8>,
+    pub display_public_key_base64: String,
     pub kaomoji_fingerprint: String,
 }
 
@@ -99,6 +100,7 @@ pub struct ShareStatsDTO {
 pub enum SyncStatusDTO {
     Completed,
     PendingTrust,
+    Failed,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -107,4 +109,32 @@ pub struct SyncSessionDTO {
     pub status: SyncStatusDTO,
     pub peer: PeerDTO,
     pub stats: Option<SyncStatsDTO>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncSessionRoleDTO {
+    Initiator,
+    Listener,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSessionRecordDTO {
+    pub id: String,
+    pub role: SyncSessionRoleDTO,
+    pub status: SyncStatusDTO,
+    pub peer_label: Option<String>,
+    pub peer_public_key: Option<Vec<u8>>,
+    pub peer_fingerprint: Option<Vec<u8>>,
+    pub started_at_ms: u64,
+    pub finished_at_ms: u64,
+    pub records_sent: u64,
+    pub records_received: u64,
+    pub records_applied: u64,
+    pub records_skipped: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub duration_ms: u64,
+    pub error_message: Option<String>,
 }

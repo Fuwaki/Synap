@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -65,8 +64,9 @@ class MainActivity : AppCompatActivity() {
     private fun handleExternalTextIntent(intent: Intent?): Boolean {
         if (intent == null) return false
 
+        // 如果是导入分享记录等意图，处理后直接返回 false，不需要为了它而重启页面
         if (handleImportShareIntent(intent)) {
-            return
+            return false // <--- 修复了这里的编译报错
         }
 
         var extractedText: String? = null

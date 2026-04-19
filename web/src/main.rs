@@ -22,7 +22,11 @@ async fn main() {
             SynapService::new(Some(db_path.clone())).expect("failed to initialize Synap service"),
         )),
         db_path: PathBuf::from(db_path),
+        sync_runtime: Default::default(),
     });
+    if let Err(error) = ensure_sync_listener_started(service.clone()) {
+        log!("failed to start sync listener at boot: {error}");
+    }
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
 

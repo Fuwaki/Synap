@@ -1,6 +1,12 @@
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 use server_fn::error::ServerFnError;
-use synap_core::{NoteDTO, TimelineNotesPageDTO};
+use synap_core::{
+    dto::SyncSessionRecordDTO, LocalIdentityDTO, NoteDTO, PeerTrustStatusDTO,
+    TimelineNotesPageDTO,
+};
+#[cfg(feature = "ssr")]
+use synap_core::PeerDTO;
 
 #[cfg(feature = "ssr")]
 use axum::{
@@ -19,14 +25,67 @@ use std::{
     sync::{Arc, Mutex},
 };
 #[cfg(feature = "ssr")]
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+#[cfg(feature = "ssr")]
+use corenet::{
+    spawn_incoming_loop, IncomingLoopHandle, ListenConfig, ListenerState, NetError, TcpNetRuntime,
+};
+#[cfg(feature = "ssr")]
 use synap_core::{ServiceError, SynapService, TimelineDirection};
 #[cfg(feature = "ssr")]
 use tokio::task::spawn_blocking;
+
+#[cfg_attr(not(feature = "ssr"), allow(dead_code))]
+const NOTE_LIMIT: usize = 50;
+#[cfg_attr(not(feature = "ssr"), allow(dead_code))]
+const TAG_SUGGESTION_LIMIT: usize = 6;
+#[cfg(feature = "ssr")]
+const DEFAULT_SYNC_PORT: u16 = 45_172;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WebListenerStateDTO {
+    pub protocol: String,
+    pub backend: String,
+    pub is_listening: bool,
+    pub listen_port: Option<u16>,
+    pub local_addresses: Vec<String>,
+    pub status: String,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WebPeerDTO {
+    pub id: String,
+    pub algorithm: String,
+    pub public_key: Vec<u8>,
+    pub display_public_key_base64: String,
+    pub kaomoji_fingerprint: String,
+    pub note: Option<String>,
+    pub status: PeerTrustStatusDTO,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSyncOverviewDTO {
+    pub listener: WebListenerStateDTO,
+    pub local_identity: LocalIdentityDTO,
+    pub peers: Vec<WebPeerDTO>,
+    pub recent_sync_sessions: Vec<SyncSessionRecordDTO>,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Default)]
+pub struct SyncRuntimeState {
+    pub listener_handle: Mutex<Option<IncomingLoopHandle>>,
+}
 
 #[cfg(feature = "ssr")]
 pub struct AppState {
     pub service: Mutex<Option<SynapService>>,
     pub db_path: PathBuf,
+    pub sync_runtime: SyncRuntimeState,
 }
 
 #[cfg(feature = "ssr")]
@@ -34,11 +93,6 @@ pub type SharedService = Arc<AppState>;
 
 #[cfg(not(feature = "ssr"))]
 pub type SharedService = ();
-
-#[cfg_attr(not(feature = "ssr"), allow(dead_code))]
-const NOTE_LIMIT: usize = 50;
-#[cfg_attr(not(feature = "ssr"), allow(dead_code))]
-const TAG_SUGGESTION_LIMIT: usize = 6;
 
 #[cfg(feature = "ssr")]
 async fn with_service<T, F>(f: F) -> Result<T, ServerFnError>
@@ -61,6 +115,122 @@ where
     })
     .await
     .map_err(|error| ServerFnError::new(error.to_string()))?
+}
+
+#[cfg(feature = "ssr")]
+fn with_app_state() -> Result<SharedService, ServerFnError> {
+    use_context::<SharedService>()
+        .ok_or_else(|| ServerFnError::new("Synap service is not available"))
+}
+
+#[cfg(feature = "ssr")]
+fn map_listener_state(state: ListenerState) -> WebListenerStateDTO {
+    WebListenerStateDTO {
+        protocol: state.protocol,
+        backend: state.backend,
+        is_listening: state.is_listening,
+        listen_port: state.listen_port,
+        local_addresses: state.local_addresses,
+        status: state.status,
+        error_message: state.error_message,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_peer(peer: PeerDTO) -> WebPeerDTO {
+    WebPeerDTO {
+        id: peer.id,
+        algorithm: peer.algorithm,
+        display_public_key_base64: BASE64_STANDARD.encode(&peer.public_key),
+        public_key: peer.public_key,
+        kaomoji_fingerprint: peer.kaomoji_fingerprint,
+        note: peer.note,
+        status: peer.status,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn listener_state_or_default(state: &SharedService) -> Result<WebListenerStateDTO, ServerFnError> {
+    let guard = state
+        .sync_runtime
+        .listener_handle
+        .lock()
+        .map_err(|_| ServerFnError::new("sync listener lock poisoned"))?;
+    Ok(guard
+        .as_ref()
+        .map(|handle| map_listener_state(handle.state()))
+        .unwrap_or_else(|| map_listener_state(ListenerState::default())))
+}
+
+#[cfg(feature = "ssr")]
+fn start_sync_listener(
+    state: SharedService,
+    preferred_port: Option<u16>,
+) -> Result<WebListenerStateDTO, String> {
+    let mut guard = state
+        .sync_runtime
+        .listener_handle
+        .lock()
+        .map_err(|_| "sync listener lock poisoned".to_string())?;
+
+    if let Some(handle) = guard.as_ref() {
+        let current = handle.state();
+        if current.is_listening {
+            return Ok(map_listener_state(current));
+        }
+    }
+
+    let runtime = TcpNetRuntime;
+    let listener = match runtime.listen(ListenConfig {
+        port: preferred_port,
+    }) {
+        Ok(listener) => listener,
+        Err(primary_error) if preferred_port.is_some() => runtime
+            .listen(ListenConfig { port: None })
+            .map_err(|fallback_error| {
+                format!(
+                    "failed to bind preferred port: {primary_error}; fallback failed: {fallback_error}"
+                )
+            })?,
+        Err(error) => return Err(error.to_string()),
+    };
+
+    let app_state = Arc::clone(&state);
+    let handle = spawn_incoming_loop(listener, move |incoming| match incoming {
+        Ok(connection) => {
+            let guard = match app_state.service.lock() {
+                Ok(guard) => guard,
+                Err(_) => {
+                    eprintln!("sync inbound failed: service lock poisoned");
+                    return;
+                }
+            };
+            let Some(service) = guard.as_ref() else {
+                eprintln!("sync inbound skipped: service is restarting");
+                return;
+            };
+            if let Err(error) = service.listen_sync(connection.channel) {
+                eprintln!("sync inbound failed: {error}");
+            }
+        }
+        Err(NetError::ListenerStopped) => {}
+        Err(error) => {
+            eprintln!("sync accept loop error: {error}");
+        }
+    });
+
+    let current_state = map_listener_state(handle.state());
+    *guard = Some(handle);
+    Ok(current_state)
+}
+
+#[cfg(feature = "ssr")]
+pub fn ensure_sync_listener_started(state: SharedService) -> Result<(), String> {
+    let configured_port = std::env::var("SYNAP_SYNC_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .or(Some(DEFAULT_SYNC_PORT));
+    start_sync_listener(state, configured_port).map(|_| ())
 }
 
 #[cfg(feature = "ssr")]
@@ -170,6 +340,95 @@ pub async fn import_db_handler(
         )
             .into_response(),
     }
+}
+
+#[server]
+pub async fn get_sync_overview_server() -> Result<WebSyncOverviewDTO, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let state = with_app_state()?;
+        let _ = start_sync_listener(state.clone(), Some(DEFAULT_SYNC_PORT));
+
+        let listener = listener_state_or_default(&state)?;
+        let local_identity = with_service(|service| service.get_local_identity()).await?;
+        let peers = with_service(|service| service.get_peers()).await?;
+        let recent_sync_sessions =
+            with_service(|service| service.get_recent_sync_sessions(Some(10))).await?;
+
+        Ok(WebSyncOverviewDTO {
+            listener,
+            local_identity,
+            peers: peers.into_iter().map(map_peer).collect(),
+            recent_sync_sessions,
+        })
+    }
+
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new("SSR is not enabled"))
+    }
+}
+
+#[server]
+pub async fn ensure_sync_listener_server() -> Result<WebListenerStateDTO, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let state = with_app_state()?;
+        start_sync_listener(state, Some(DEFAULT_SYNC_PORT)).map_err(ServerFnError::new)
+    }
+
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new("SSR is not enabled"))
+    }
+}
+
+#[server]
+pub async fn approve_peer_server(
+    peer_id: String,
+    note: Option<String>,
+) -> Result<WebPeerDTO, ServerFnError> {
+    let peer_id_for_note = peer_id.clone();
+    let normalized_note = note.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        (!trimmed.is_empty()).then_some(trimmed)
+    });
+
+    with_service(move |service| {
+        if normalized_note.is_some() {
+            let _ = service.update_peer_note(&peer_id_for_note, normalized_note.clone())?;
+        }
+        let peer = service.set_peer_status(&peer_id, PeerTrustStatusDTO::Trusted)?;
+        Ok(map_peer(peer))
+    })
+    .await
+}
+
+#[server]
+pub async fn update_peer_note_server(
+    peer_id: String,
+    note: Option<String>,
+) -> Result<WebPeerDTO, ServerFnError> {
+    let normalized_note = note.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        (!trimmed.is_empty()).then_some(trimmed)
+    });
+
+    with_service(move |service| service.update_peer_note(&peer_id, normalized_note).map(map_peer))
+        .await
+}
+
+#[server]
+pub async fn set_peer_status_server(
+    peer_id: String,
+    status: PeerTrustStatusDTO,
+) -> Result<WebPeerDTO, ServerFnError> {
+    with_service(move |service| service.set_peer_status(&peer_id, status).map(map_peer)).await
+}
+
+#[server]
+pub async fn delete_peer_server(peer_id: String) -> Result<(), ServerFnError> {
+    with_service(move |service| service.delete_peer(&peer_id)).await
 }
 
 #[server]

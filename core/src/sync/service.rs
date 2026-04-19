@@ -270,12 +270,7 @@ impl<'a> SyncService<'a> {
         let mut stats = SyncStats::default();
         let started_at_ms = now_ms();
         let result = self.sync_as_initiator_inner(channel, &mut stats);
-        self.finish_sync_session(
-            SyncSessionRole::Initiator,
-            started_at_ms,
-            stats,
-            result,
-        )
+        self.finish_sync_session(SyncSessionRole::Initiator, started_at_ms, stats, result)
     }
 
     pub fn sync_as_responder<C: SyncChannel>(
@@ -285,12 +280,7 @@ impl<'a> SyncService<'a> {
         let mut stats = SyncStats::default();
         let started_at_ms = now_ms();
         let result = self.sync_as_responder_inner(channel, &mut stats);
-        self.finish_sync_session(
-            SyncSessionRole::Listener,
-            started_at_ms,
-            stats,
-            result,
-        )
+        self.finish_sync_session(SyncSessionRole::Listener, started_at_ms, stats, result)
     }
 
     fn sync_as_initiator_inner<C: SyncChannel>(

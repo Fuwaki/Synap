@@ -20,6 +20,37 @@ impl ContentView {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Theme {
+    Auto,
+    Light,
+    Dark,
+}
+
+impl Theme {
+    pub fn from_index(index: u32) -> Self {
+        match index {
+            1 => Self::Light,
+            2 => Self::Dark,
+            _ => Self::Auto,
+        }
+    }
+
+    pub fn index(self) -> u32 {
+        match self {
+            Self::Auto => 0,
+            Self::Light => 1,
+            Self::Dark => 2,
+        }
+    }
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NoteLayout {
     Waterfall,
     List,
@@ -97,6 +128,7 @@ pub struct AppState {
     pub selected_note_id: Option<String>,
     pub selected_note_detail: Option<NoteDetailViewModel>,
     pub status: Option<String>,
+    pub theme: Theme,
 }
 
 impl Default for AppState {
@@ -109,6 +141,7 @@ impl Default for AppState {
             selected_note_id: None,
             selected_note_detail: None,
             status: None,
+            theme: Theme::default(),
         }
     }
 }

@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gtk = { package = "gtk4", version = "0.11.2", features = ["v4_22"] }
+relm4 = { version = "0.9.1", features = ["macros", "libadwaita"] }
+gtk = { package = "gtk4", version = "0.9.6", features = ["v4_16"] }
+adw = { package = "libadwaita", version = "0.7.2", features = ["v1_5"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 synap-core = { path = "../core", version = "0.1.0" }

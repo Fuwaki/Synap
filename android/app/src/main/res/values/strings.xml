@@ -41,7 +41,7 @@
     <string name="handedness_desc">更改浮动按钮和页面出现的位置</string>
     <string name="left_handed">靠左</string>
     <string name="right_handed">靠右</string>
-    <string name="backup_and_restore">备份与恢复</string>
+    <string name="backup_and_sync">备份与同步</string>
     <string name="export_backup">导出为备份文件(.redb)</string>
     <string name="export_and_share">导出备份文件(.redb)并分享</string>
     <string name="export_and_share_desc">将完整数据备份并分享到其他软件或设备</string>
@@ -99,4 +99,10 @@
     <string name="role_backend">后端开发</string>
     <string name="role_frontend_ui">前端 &amp; UI 设计</string>
     <string name="edit_reply_context_title">接续这条思路</string>
+    <string name="share_import_in_progress_title">正在导入分享内容</string>
+    <string name="share_import_in_progress_message">请稍候，Synap 正在处理这份分享数据。</string>
+    <string name="share_import_success_title">导入完成</string>
+    <string name="share_import_error_title">导入失败</string>
+    <string name="share_import_confirm">知道了</string>
+    <string name="share_import_close">关闭</string>
 </resources>

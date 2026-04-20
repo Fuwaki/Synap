@@ -1,0 +1,9 @@
+[package]
+name = "corenet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossbeam-channel = "0.5.15"
+synap-core = { path = "../core" }
+thiserror = "2.0.17"

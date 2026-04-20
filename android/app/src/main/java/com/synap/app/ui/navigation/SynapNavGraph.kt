@@ -21,17 +21,20 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.synap.app.MainActivity
 import com.synap.app.ui.screens.*
 import com.synap.app.ui.viewmodel.*
 
 fun detailRoute(noteId: String): String = "detail/${Uri.encode(noteId)}"
 
-fun editorRoute(parentId: String? = null, parentSummary: String? = null, editNoteId: String? = null): String {
+// ========== 新增 initialContent 参数 ==========
+fun editorRoute(parentId: String? = null, parentSummary: String? = null, editNoteId: String? = null, initialContent: String? = null): String {
     val params = buildList {
         parentId?.let { add("parentId=${Uri.encode(it)}") }
         parentSummary?.let { add("parentSummary=${Uri.encode(it.take(120))}") }
         editNoteId?.let { add("editNoteId=${Uri.encode(it)}") }
+        initialContent?.let { add("initialContent=${Uri.encode(it)}") }
     }
     return if (params.isEmpty()) "editor" else "editor?${params.joinToString("&")}"
 }
@@ -64,10 +67,8 @@ fun SynapNavGraph(
     databaseActivity: MainActivity?,
 ) {
     val navController = rememberNavController()
-
     val startDestination = remember { if (hasSeenTutorial) "home" else "tutorial" }
 
-    // ==================== 核心修改：在最外层包裹共享元素动画布局 ====================
     SharedTransitionLayout {
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
@@ -113,7 +114,7 @@ fun SynapNavGraph(
                         onToggleTagFilter = viewModel::toggleTag,
                         onToggleUntaggedFilter = viewModel::toggleUntagged,
                         onToggleAllTags = viewModel::toggleAllTags,
-                        // ========== 注入共享动画作用域 ==========
+                        onExportShare = viewModel::exportShare,
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@composable
                     )
@@ -164,6 +165,7 @@ fun SynapNavGraph(
                         onOpenRelatedNote = { noteId -> navController.navigate(detailRoute(noteId)) },
                         onLoadMoreReplies = viewModel::loadMoreReplies,
                         onRefresh = viewModel::refreshAll,
+                        onExportShare = viewModel::exportShare,
                     )
                 }
 
@@ -176,10 +178,36 @@ fun SynapNavGraph(
                         databaseActivity = databaseActivity,
                         onNavigateToTypographySettings = { navController.navigate("typography_settings") },
                         onNavigateToLanguageSelection = { navController.navigate("language_selection") },
+                        onNavigateToAppIcon = { navController.navigate("app_icon") },
+                        onNavigateToSync = { navController.navigate("sync") },
                         onNavigateToTeam = { navController.navigate("team") },
                         onNavigateToTutorial = { navController.navigate("tutorial") },
                         onNavigateBack = { navController.popBackStack() }
                     )
+                }
+
+                composable("sync") {
+                    val viewModel: SyncViewModel = hiltViewModel()
+                    val uiState by viewModel.uiState.collectAsState()
+
+                    SyncScreen(
+                        uiState = uiState,
+                        onRefresh = viewModel::refresh,
+                        onAddConnection = viewModel::addConnection,
+                        onDeleteConnection = viewModel::deleteConnection,
+                        onPairConnection = viewModel::pairConnection,
+                        onPairDiscoveredPeer = viewModel::pairDiscoveredPeer,
+                        onTrustPeer = viewModel::trustPeer,
+                        onUpdatePeerNote = viewModel::updatePeerNote,
+                        onDeletePeer = viewModel::deletePeer,
+                        onSetPeerStatus = viewModel::setPeerStatus,
+                        onDismissPendingTrustPrompt = viewModel::dismissPendingTrustPrompt,
+                        onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable("app_icon") {
+                    SettingLogoScreen(onNavigateBack = { navController.popBackStack() })
                 }
 
                 composable("language_selection") {
@@ -200,21 +228,34 @@ fun SynapNavGraph(
                 }
 
                 composable("team") {
-                    TeamScreen(
-                        onNavigateBack = { navController.popBackStack() }
-                    )
+                    TeamScreen(onNavigateBack = { navController.popBackStack() })
                 }
 
+                // ========== 修改：接收 initialContent ==========
                 composable(
-                    route = "editor?parentId={parentId}&parentSummary={parentSummary}&editNoteId={editNoteId}",
+                    route = "editor?parentId={parentId}&parentSummary={parentSummary}&editNoteId={editNoteId}&initialContent={initialContent}",
                     arguments = listOf(
                         navArgument("parentId") { nullable = true; type = NavType.StringType },
                         navArgument("parentSummary") { nullable = true; type = NavType.StringType },
                         navArgument("editNoteId") { nullable = true; type = NavType.StringType },
+                        navArgument("initialContent") { nullable = true; type = NavType.StringType },
                     ),
-                ) {
+                    deepLinks = listOf(
+                        navDeepLink { uriPattern = "synap://editor?initialContent={initialContent}" },
+                        navDeepLink { uriPattern = "synap://editor" }
+                    )
+                ) { backStackEntry ->
                     val viewModel: EditorViewModel = hiltViewModel()
                     val uiState by viewModel.uiState.collectAsState()
+
+                    // ========== 核心自动填充逻辑 ==========
+                    // 仅在新建笔记模式且正文为空时，自动填充选取的文字
+                    val initialContent = backStackEntry.arguments?.getString("initialContent")
+                    LaunchedEffect(initialContent) {
+                        if (!initialContent.isNullOrBlank() && uiState.mode !is EditorMode.Edit && uiState.content.isBlank()) {
+                            viewModel.updateContent(initialContent)
+                        }
+                    }
 
                     LaunchedEffect(viewModel) {
                         viewModel.events.collect { event ->
@@ -235,7 +276,6 @@ fun SynapNavGraph(
                         onAddTag = viewModel::addTag,
                         onRemoveTag = viewModel::removeTag,
                         onSave = viewModel::save,
-                        // ========== 注入共享动画作用域 ==========
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@composable
                     )

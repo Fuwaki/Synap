@@ -157,7 +157,14 @@ fun SynapNavGraph(
                     )
                 }
 
-                composable("detail/{noteId}", arguments = listOf(navArgument("noteId") { type = NavType.StringType })) {
+                composable(
+                    route = "detail/{noteId}",
+                    arguments = listOf(navArgument("noteId") { type = NavType.StringType }),
+                    // ========== 新增：为详情页配置 DeepLink，以便系统搜索可以直接唤起跳转 ==========
+                    deepLinks = listOf(
+                        navDeepLink { uriPattern = "synap://detail/{noteId}" }
+                    )
+                ) {
                     val viewModel: DetailViewModel = hiltViewModel()
                     val uiState by viewModel.uiState.collectAsState()
 
@@ -257,7 +264,6 @@ fun SynapNavGraph(
                     val viewModel: EditorViewModel = hiltViewModel()
                     val uiState by viewModel.uiState.collectAsState()
 
-                    // ========== 核心自动填充逻辑 ==========
                     val initialContent = backStackEntry.arguments?.getString("initialContent")
                     LaunchedEffect(initialContent) {
                         if (!initialContent.isNullOrBlank() && uiState.mode !is EditorMode.Edit && uiState.content.isBlank()) {

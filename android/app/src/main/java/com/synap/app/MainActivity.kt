@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
             uiState.isLoading && uiState.errorMessage == null && (currentTime - startTime < timeout)
         }
 
-        // ========== 处理冷启动时的外部文字传入 ==========
+        // ========== 处理冷启动时的外部文字传入或搜索跳转 ==========
         handleExternalTextIntent(intent)
 
         setContent {
@@ -50,8 +50,8 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
 
-        // ========== 核心修复：处理热启动（App在后台） ==========
-        // 如果成功拦截到分享文字，强制通过 CLEAR_TASK 重启，以完美触发 Compose 的深层链接
+        // ========== 处理热启动（App在后台） ==========
+        // 如果成功拦截到分享文字或系统搜索跳转，强制重启以触发 Compose 的深层链接
         if (handleExternalTextIntent(intent)) {
             val restartIntent = Intent(intent).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -60,13 +60,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ========== 逻辑升级：返回 Boolean，并清理已处理的数据 ==========
     private fun handleExternalTextIntent(intent: Intent?): Boolean {
         if (intent == null) return false
 
         // 如果是导入分享记录等意图，处理后直接返回 false，不需要为了它而重启页面
         if (handleImportShareIntent(intent)) {
-            return false // <--- 修复了这里的编译报错
+            return false
+        }
+
+        // ========== 新增：处理系统全局搜索 (AppSearch) 的结果点击 ==========
+        // 系统的搜索结果点击会触发带有对应 URI 的 ACTION_VIEW 意图
+        if (intent.action == Intent.ACTION_VIEW && intent.data?.scheme == "synap" && intent.data?.host == "detail") {
+            // 返回 true 让热启动重构 Navigation，完美跳转到详情页
+            return true
         }
 
         var extractedText: String? = null
@@ -75,18 +81,17 @@ class MainActivity : AppCompatActivity() {
         if (intent.action == Intent.ACTION_PROCESS_TEXT) {
             extractedText = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
         }
-        // 2. 处理系统分享菜单 (放宽了类型判断，兼容更多 App 传来的文本)
+        // 2. 处理系统分享菜单
         else if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) {
             extractedText = intent.getStringExtra(Intent.EXTRA_TEXT)
         }
 
         // 如果成功提取到文字，统一转换为新建笔记的 DeepLink
         if (!extractedText.isNullOrBlank()) {
-            // 将 Intent 篡改为单纯的 DeepLink
             intent.action = Intent.ACTION_VIEW
             intent.data = Uri.parse("synap://editor?initialContent=${Uri.encode(extractedText)}")
 
-            // 重要：清理掉原有的文本 Extra，防止页面重启后被重复处理
+            // 清理原文本 Extra，防止被重复处理
             intent.removeExtra(Intent.EXTRA_PROCESS_TEXT)
             intent.removeExtra(Intent.EXTRA_TEXT)
             return true

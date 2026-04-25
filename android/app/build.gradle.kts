@@ -195,6 +195,11 @@ dependencies {
     implementation("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:editor:4.6.2")
     implementation("com.google.zxing:core:3.5.3")
+    val appsearchVersion = "1.1.0-alpha04"
+    implementation("androidx.appsearch:appsearch:$appsearchVersion")
+    implementation("androidx.appsearch:appsearch-platform-storage:$appsearchVersion")
+    implementation("androidx.appsearch:appsearch-local-storage:$appsearchVersion")
+    ksp("androidx.appsearch:appsearch-compiler:$appsearchVersion")
 }
 
 apply(from = rootProject.file("gradle/rust-uniffi.gradle.kts"))

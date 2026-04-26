@@ -72,13 +72,17 @@ impl SemanticIndex {
     ) -> Result<bool, ServiceError> {
         let text = text.trim();
         if text.is_empty() {
-            self.vector_store.delete(tx, note_id).map_err(ServiceError::from)?;
+            self.vector_store
+                .delete(tx, note_id)
+                .map_err(ServiceError::from)?;
             return Ok(false);
         }
 
         let vector = self.embedding_model.embed(text)?;
         if vector.is_empty() {
-            self.vector_store.delete(tx, note_id).map_err(ServiceError::from)?;
+            self.vector_store
+                .delete(tx, note_id)
+                .map_err(ServiceError::from)?;
             return Ok(false);
         }
 
@@ -93,7 +97,9 @@ impl SemanticIndex {
         tx: &redb::WriteTransaction,
         note_id: &BlockId,
     ) -> Result<bool, ServiceError> {
-        self.vector_store.delete(tx, note_id).map_err(ServiceError::from)
+        self.vector_store
+            .delete(tx, note_id)
+            .map_err(ServiceError::from)
     }
 
     pub fn rebuild<'a, I>(

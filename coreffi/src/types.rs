@@ -1,11 +1,12 @@
 //! FFI-compatible type conversions for Synap.
 
 use synap_core::dto::{
-    LocalIdentityDTO as CoreLocalIdentityDto, NoteDTO as CoreNoteDto, PeerDTO as CorePeerDto,
-    PeerTrustStatusDTO as CorePeerTrustStatusDto, PublicKeyInfoDTO as CorePublicKeyInfoDto,
-    ShareStatsDTO as CoreShareStatsDto, SyncSessionDTO as CoreSyncSessionDto,
+    LocalIdentityDTO as CoreLocalIdentityDto, NoteBriefDTO as CoreNoteBriefDto,
+    NoteDTO as CoreNoteDto, PeerDTO as CorePeerDto, PeerTrustStatusDTO as CorePeerTrustStatusDto,
+    PublicKeyInfoDTO as CorePublicKeyInfoDto, SearchResultDTO as CoreSearchResultDto,
+    SearchSourceDTO as CoreSearchSourceDto, ShareStatsDTO as CoreShareStatsDto,
+    StarmapPointDTO as CoreStarmapPointDto, SyncSessionDTO as CoreSyncSessionDto,
     SyncSessionRecordDTO as CoreSyncSessionRecordDto, SyncSessionRoleDTO as CoreSyncSessionRoleDto,
-    StarmapPointDTO as CoreStarmapPointDto,
     SyncStatsDTO as CoreSyncStatsDto, SyncStatusDTO as CoreSyncStatusDto,
     TimelineNotesPageDTO as CoreTimelineNotesPageDto, TimelineSessionDTO as CoreTimelineSessionDto,
     TimelineSessionsPageDTO as CoreTimelineSessionsPageDto,
@@ -16,12 +17,31 @@ use synap_core::BuildInfo as CoreBuildInfo;
 
 /// A note DTO that is friendly to UniFFI/Kotlin consumers.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteBriefDTO {
+    pub id: String,
+    pub content_preview: String,
+    pub created_at: i64,
+}
+
+impl From<CoreNoteBriefDto> for NoteBriefDTO {
+    fn from(note: CoreNoteBriefDto) -> Self {
+        Self {
+            id: note.id,
+            content_preview: note.content_preview,
+            created_at: note.created_at as i64,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteDTO {
     pub id: String,
     pub content: String,
     pub tags: Vec<String>,
     pub created_at: i64,
     pub deleted: bool,
+    pub reply_to: Option<NoteBriefDTO>,
+    pub edited_from: Option<NoteBriefDTO>,
 }
 
 impl From<CoreNoteDto> for NoteDTO {
@@ -32,6 +52,40 @@ impl From<CoreNoteDto> for NoteDTO {
             tags: note.tags,
             created_at: note.created_at as i64,
             deleted: note.deleted,
+            reply_to: note.reply_to.map(Into::into),
+            edited_from: note.edited_from.map(Into::into),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchSourceDTO {
+    Fuzzy,
+    Semantic,
+}
+
+impl From<CoreSearchSourceDto> for SearchSourceDTO {
+    fn from(source: CoreSearchSourceDto) -> Self {
+        match source {
+            CoreSearchSourceDto::Fuzzy => Self::Fuzzy,
+            CoreSearchSourceDto::Semantic => Self::Semantic,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchResultDTO {
+    pub note: NoteDTO,
+    pub score: f32,
+    pub sources: Vec<SearchSourceDTO>,
+}
+
+impl From<CoreSearchResultDto> for SearchResultDTO {
+    fn from(result: CoreSearchResultDto) -> Self {
+        Self {
+            note: result.note.into(),
+            score: result.score,
+            sources: result.sources.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -399,6 +453,12 @@ mod tests {
             tags: vec!["rust".to_string(), "android".to_string()],
             created_at: 1_742_165_200_000,
             deleted: false,
+            reply_to: Some(CoreNoteBriefDto {
+                id: "0195f9a8-d085-7f9d-a604-469e0f91d0e4".to_string(),
+                content_preview: "Parent preview".to_string(),
+                created_at: 1_742_165_100_000,
+            }),
+            edited_from: None,
         };
 
         let ffi_note: NoteDTO = core_note.into();
@@ -407,6 +467,14 @@ mod tests {
         assert_eq!(ffi_note.tags, vec!["rust", "android"]);
         assert_eq!(ffi_note.created_at, 1_742_165_200_000);
         assert!(!ffi_note.deleted);
+        assert_eq!(
+            ffi_note
+                .reply_to
+                .as_ref()
+                .map(|brief| brief.content_preview.as_str()),
+            Some("Parent preview")
+        );
+        assert!(ffi_note.edited_from.is_none());
     }
 
     #[test]

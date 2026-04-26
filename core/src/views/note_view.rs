@@ -3,7 +3,7 @@ use std::collections::{HashSet, VecDeque};
 use uuid::Uuid;
 
 use crate::{
-    dto::NoteDTO,
+    dto::{NoteBriefDTO, NoteDTO},
     error::NoteError,
     models::{
         note::{Note, NoteReader, NoteRef},
@@ -20,6 +20,8 @@ pub struct NoteView<'a, 'b: 'a> {
 }
 
 impl<'a, 'b> NoteView<'a, 'b> {
+    const NOTE_BRIEF_PREVIEW_LIMIT: usize = 32;
+
     /// 构造一个视图导航器（零成本，只是借用 Reader）
     pub fn new(reader: &'a NoteReader<'b>, note: Note) -> Self {
         Self { reader, note }
@@ -272,6 +274,68 @@ impl<'a, 'b> NoteView<'a, 'b> {
             .collect()
     }
 
+    fn created_at_from_id(id: Uuid) -> Result<u64, NoteError> {
+        let (seconds, nanos) = id
+            .get_timestamp()
+            .ok_or(NoteError::IdNotFound { id })?
+            .to_unix();
+        Ok(seconds.saturating_mul(1000) + u64::from(nanos / 1_000_000))
+    }
+
+    fn content_preview(content: &str) -> String {
+        let normalized = content.split_whitespace().collect::<Vec<_>>().join(" ");
+        let mut preview = String::new();
+        let mut chars = normalized.chars();
+
+        for _ in 0..Self::NOTE_BRIEF_PREVIEW_LIMIT {
+            match chars.next() {
+                Some(ch) => preview.push(ch),
+                None => return normalized,
+            }
+        }
+
+        if chars.next().is_some() {
+            preview.push('…');
+        }
+
+        preview
+    }
+
+    fn note_to_brief(note: &Note) -> Result<NoteBriefDTO, NoteError> {
+        Ok(NoteBriefDTO {
+            id: note.get_id().to_string(),
+            content_preview: Self::content_preview(note.content()),
+            created_at: Self::created_at_from_id(note.get_id())?,
+        })
+    }
+
+    fn ref_to_brief(&self, note_ref: NoteRef) -> Result<NoteBriefDTO, NoteError> {
+        let note =
+            note_ref
+                .hydrate(self.reader)
+                .map_err(NoteError::Db)?
+                .ok_or(NoteError::IdNotFound {
+                    id: note_ref.get_id(),
+                })?;
+        Self::note_to_brief(&note)
+    }
+
+    fn reply_to_brief(&self) -> Result<Option<NoteBriefDTO>, NoteError> {
+        self.parents_refs()?
+            .next()
+            .transpose()?
+            .map(|note_ref| self.ref_to_brief(note_ref))
+            .transpose()
+    }
+
+    fn edited_from_brief(&self) -> Result<Option<NoteBriefDTO>, NoteError> {
+        self.history_refs()?
+            .next()
+            .transpose()?
+            .map(|note_ref| self.ref_to_brief(note_ref))
+            .transpose()
+    }
+
     /// 组装 DTO
     pub fn to_dto(&self) -> Result<NoteDTO, NoteError> {
         let tags: Vec<String> = self
@@ -279,21 +343,15 @@ impl<'a, 'b> NoteView<'a, 'b> {
             .iter()
             .map(|t| t.get_content().to_string())
             .collect();
-        let (seconds, nanos) = self
-            .note
-            .get_id()
-            .get_timestamp()
-            .ok_or(NoteError::IdNotFound {
-                id: self.note.get_id(),
-            })?
-            .to_unix();
 
         Ok(NoteDTO {
             id: self.note.get_id().to_string(),
             content: self.note.content().to_string(),
             tags,
-            created_at: seconds.saturating_mul(1000) + u64::from(nanos / 1_000_000),
+            created_at: Self::created_at_from_id(self.note.get_id())?,
             deleted: self.note.is_deleted(),
+            reply_to: self.reply_to_brief()?,
+            edited_from: self.edited_from_brief()?,
         })
     }
 

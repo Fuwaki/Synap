@@ -37,9 +37,7 @@ impl From<ServiceError> for FfiError {
             ServiceError::Err(())
             | ServiceError::Other(_)
             | ServiceError::ShareProtocol(_)
-            | ServiceError::Embedding(_) => {
-                FfiError::Other
-            }
+            | ServiceError::Embedding(_) => FfiError::Other,
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io::{Read, Write},
     path::Path,
     sync::{Arc, Mutex},
@@ -21,9 +21,10 @@ use crate::{
     crypto,
     db::umap::UmapCache,
     dto::{
-        LocalIdentityDTO, NoteDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, ShareStatsDTO,
-        StarmapPointDTO, SyncSessionDTO, SyncSessionRecordDTO, SyncSessionRoleDTO, SyncStatsDTO,
-        SyncStatusDTO, TimelineNotesPageDTO, TimelineSessionDTO, TimelineSessionsPageDTO,
+        LocalIdentityDTO, NoteDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, SearchResultDTO,
+        SearchSourceDTO, ShareStatsDTO, StarmapPointDTO, SyncSessionDTO, SyncSessionRecordDTO,
+        SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO, TimelineNotesPageDTO, TimelineSessionDTO,
+        TimelineSessionsPageDTO,
     },
     error::ServiceError,
     models::{

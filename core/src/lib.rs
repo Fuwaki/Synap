@@ -29,9 +29,9 @@ pub mod version;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use dto::{
-    LocalIdentityDTO, NoteDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, ShareStatsDTO,
-    StarmapPointDTO, SyncSessionDTO, SyncStatsDTO, SyncStatusDTO, TimelineNotesPageDTO,
-    TimelineSessionDTO, TimelineSessionsPageDTO,
+    LocalIdentityDTO, NoteDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, SearchResultDTO,
+    SearchSourceDTO, ShareStatsDTO, StarmapPointDTO, SyncSessionDTO, SyncStatsDTO, SyncStatusDTO,
+    TimelineNotesPageDTO, TimelineSessionDTO, TimelineSessionsPageDTO,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use error::{NoteError, ServiceError};

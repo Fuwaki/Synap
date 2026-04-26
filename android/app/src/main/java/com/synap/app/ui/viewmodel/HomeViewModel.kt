@@ -9,8 +9,10 @@ import com.synap.app.data.portal.CursorPortal
 import com.synap.app.data.portal.PortalState
 import com.synap.app.data.repository.SynapRepository
 import com.synap.app.ui.model.Note
+import com.synap.app.ui.model.SearchResultNote
 import com.synap.app.ui.model.TimelineSessionGroup
 import com.synap.app.ui.model.toUiNote
+import com.synap.app.ui.model.toUiSearchResultNote
 import com.synap.app.ui.model.toUiSessionGroup
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -24,6 +26,7 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
     val query: String = "",
     val notes: List<Note> = emptyList(),
+    val searchResults: List<SearchResultNote> = emptyList(),
     val sessionGroups: List<TimelineSessionGroup> = emptyList(),
     val isLoading: Boolean = true,
     val hasMore: Boolean = false,
@@ -38,7 +41,7 @@ data class HomeUiState(
 
 private data class HomeQueryState(
     val query: String,
-    val searchResults: List<Note>,
+    val searchResults: List<SearchResultNote>,
     val isSearchLoading: Boolean,
     val searchError: String?,
 )
@@ -84,7 +87,7 @@ class HomeViewModel @Inject constructor(
     private val recentPortal = repository.openRecentPortal(limit = pageLimit)
     private val recentSessionsPortal = repository.openRecentSessionsPortal(limit = pageLimit)
     private val query = MutableStateFlow("")
-    private val searchResults = MutableStateFlow<List<Note>>(emptyList())
+    private val searchResults = MutableStateFlow<List<SearchResultNote>>(emptyList())
     private val isSearchLoading = MutableStateFlow(false)
     private val searchError = MutableStateFlow<String?>(null)
     private val feedError = MutableStateFlow<String?>(null)
@@ -165,7 +168,8 @@ class HomeViewModel @Inject constructor(
 
         HomeUiState(
             query = currentState.query,
-            notes = if (searchMode) currentState.searchResults else currentHomeFeed.notes,
+            notes = if (searchMode) currentState.searchResults.map { it.note } else currentHomeFeed.notes,
+            searchResults = currentState.searchResults,
             sessionGroups = if (searchMode) emptyList() else currentHomeFeed.sessionGroups,
             isLoading = if (searchMode) currentState.isSearchLoading else currentHomeFeed.isLoading,
             hasMore = if (searchMode) false else currentHomeFeed.hasMore,
@@ -350,7 +354,12 @@ class HomeViewModel @Inject constructor(
         searchError.value = null
 
         runCatching {
-            repository.search(currentQuery, limit = 50u).map { it.toUiNote() }
+            repository.searchFusion(
+                currentQuery,
+                limit = 50u,
+                fuzzyLimit = null,
+                semanticLimit = 10u,
+            ).map { it.toUiSearchResultNote() }
         }.fold(
             onSuccess = {
                 searchResults.value = it

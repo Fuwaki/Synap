@@ -125,10 +125,7 @@ impl OpenAiEmbeddingModel {
         self
     }
 
-    fn post_embeddings(
-        &self,
-        input: EmbeddingInput,
-    ) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    fn post_embeddings(&self, input: EmbeddingInput) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         let body = serde_json::to_string(&OpenAiEmbeddingRequest {
             model: self.model.clone(),
             input,
@@ -147,7 +144,10 @@ impl OpenAiEmbeddingModel {
             .map_err(map_ureq_error)?;
 
         let status = response.status().as_u16();
-        let text = response.body_mut().read_to_string().map_err(map_ureq_error)?;
+        let text = response
+            .body_mut()
+            .read_to_string()
+            .map_err(map_ureq_error)?;
         if !(200..300).contains(&status) {
             return Err(EmbeddingError::HttpStatus { status, body: text });
         }

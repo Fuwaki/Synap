@@ -15,6 +15,7 @@ import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.NoteFeedStatus
 import com.synap.app.data.model.NoteRecord
 import com.synap.app.data.model.PeerRecord
+import com.synap.app.data.model.SearchResultRecord
 import com.synap.app.data.model.ShareImportStats
 import com.synap.app.data.model.StarmapPointRecord
 import com.synap.app.data.model.SyncSession
@@ -32,6 +33,7 @@ import com.synap.app.data.model.toCursorPage
 import com.synap.app.data.model.toDto
 import com.synap.app.data.model.toNoteRecord
 import com.synap.app.data.model.toNoteRecords
+import com.synap.app.data.model.toSearchResultRecords
 import com.synap.app.data.model.toCursorPage as toSessionCursorPage
 import com.synap.app.data.portal.CursorPage
 import com.synap.app.di.IoDispatcher
@@ -277,6 +279,18 @@ class CoreffiRuntime @Inject constructor(
 
     override suspend fun search(query: String, limit: UInt): Result<List<NoteRecord>> =
         withService { service -> service.search(query, limit).toNoteRecords() }
+
+    override suspend fun searchFusion(
+        query: String,
+        limit: UInt,
+        fuzzyLimit: UInt?,
+        semanticLimit: UInt?,
+    ): Result<List<SearchResultRecord>> =
+        withService { service ->
+            service
+                .searchFusion(query, limit, fuzzyLimit, semanticLimit)
+                .toSearchResultRecords()
+        }
 
     override suspend fun searchTags(query: String, limit: UInt): Result<List<String>> =
         withService { service -> service.searchTags(query, limit) }

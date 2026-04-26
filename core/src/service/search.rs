@@ -1,5 +1,12 @@
 use super::*;
 
+#[derive(Debug, Clone)]
+struct AggregatedSearchHit {
+    note_id: Uuid,
+    score: f32,
+    sources: Vec<SearchSourceDTO>,
+}
+
 impl SynapService {
     fn init_search(&self) -> Result<(), ServiceError> {
         self.note_searcher.clear();
@@ -71,6 +78,84 @@ impl SynapService {
         })
     }
 
+    pub fn search_fusion(
+        &self,
+        query: &str,
+        limit: usize,
+        fuzzy_limit: Option<usize>,
+        semantic_limit: Option<usize>,
+    ) -> Result<Vec<SearchResultDTO>, ServiceError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let fuzzy_limit = fuzzy_limit.unwrap_or_else(|| self.note_searcher.total_items() as usize);
+        let semantic_limit = semantic_limit.unwrap_or(limit);
+
+        let fuzzy_results = self
+            .note_searcher
+            .search(query, fuzzy_limit, None);
+        let semantic_results =
+            self.with_read(|tx, _reader| self.semantic_index.search(tx, query, semantic_limit))?;
+
+        let mut hits = HashMap::<Uuid, AggregatedSearchHit>::new();
+        let fuzzy_len = fuzzy_results.items.len();
+
+        for (index, item) in fuzzy_results.items.into_iter().enumerate() {
+            let score = Self::rank_score(index, fuzzy_len);
+            hits.entry(item.id)
+                .and_modify(|hit| {
+                    hit.score += score;
+                    if !hit.sources.contains(&SearchSourceDTO::Fuzzy) {
+                        hit.sources.push(SearchSourceDTO::Fuzzy);
+                    }
+                })
+                .or_insert_with(|| AggregatedSearchHit {
+                    note_id: item.id,
+                    score,
+                    sources: vec![SearchSourceDTO::Fuzzy],
+                });
+        }
+
+        for item in semantic_results {
+            let note_id = Uuid::from_bytes(item.note_id);
+            hits.entry(note_id)
+                .and_modify(|hit| {
+                    hit.score += item.score;
+                    if !hit.sources.contains(&SearchSourceDTO::Semantic) {
+                        hit.sources.push(SearchSourceDTO::Semantic);
+                    }
+                })
+                .or_insert_with(|| AggregatedSearchHit {
+                    note_id,
+                    score: item.score,
+                    sources: vec![SearchSourceDTO::Semantic],
+                });
+        }
+
+        let mut ranked_hits = hits.into_values().collect::<Vec<_>>();
+        ranked_hits.sort_by(|a, b| b.score.total_cmp(&a.score));
+        ranked_hits.truncate(limit);
+
+        self.with_read(|_tx, reader| {
+            ranked_hits
+                .into_iter()
+                .map(|hit| {
+                    let note = reader
+                        .get_by_id(&hit.note_id)?
+                        .ok_or(ServiceError::InvalidId)?;
+                    let note = self.note_to_dto(note, reader)?;
+
+                    Ok(SearchResultDTO {
+                        note,
+                        score: hit.score,
+                        sources: hit.sources,
+                    })
+                })
+                .collect()
+        })
+    }
+
     pub fn search_tags(&self, query: &str, limit: usize) -> Result<Vec<String>, ServiceError> {
         let search_res = self.tag_searcher.search(query, limit, None);
         let ids = search_res.items;
@@ -109,5 +194,13 @@ impl SynapService {
             tags.sort();
             Ok(tags)
         })
+    }
+
+    fn rank_score(index: usize, total: usize) -> f32 {
+        if total == 0 {
+            0.0
+        } else {
+            (total - index) as f32 / total as f32
+        }
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -21,8 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,12 +47,15 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.synap.app.R
 import com.synap.app.ui.components.NoteCardItem
 import com.synap.app.ui.model.Note
+import com.synap.app.ui.model.SearchResultNote
+import com.synap.app.ui.model.SearchSourceBadge
 import com.synap.app.ui.viewmodel.HomeUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -200,7 +206,7 @@ fun SearchScreen(
                 }
 
                 // 无结果
-                uiState.notes.isEmpty() -> {
+                uiState.searchResults.isEmpty() -> {
                     Text(
                         text = stringResource(R.string.search_no_results),
                         style = MaterialTheme.typography.bodyLarge,
@@ -224,15 +230,14 @@ fun SearchScreen(
                         verticalItemSpacing = 16.dp,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        itemsIndexed(uiState.notes, key = { _, note -> note.id }) { index, note ->
-                            NoteCardItem(
-                                note = note,
-                                onClick = { onOpenNote(note.id) },
-                                onLongClick = { /* 搜索页不触发多选 */ },
-                                isSelectionMode = false,
-                                isSelected = false,
-                                onToggleDeleted = { onToggleDeleted(note) },
-                                onReply = { },
+                        itemsIndexed(
+                            uiState.searchResults,
+                            key = { _, result -> result.note.id },
+                        ) { index, result ->
+                            SearchResultCard(
+                                result = result,
+                                onOpenNote = onOpenNote,
+                                onToggleDeleted = onToggleDeleted,
                                 animationDelayMillis = (index.coerceAtMost(6)) * 45,
                             )
                         }
@@ -242,3 +247,95 @@ fun SearchScreen(
         }
     }
 }
+
+@Composable
+private fun SearchResultCard(
+    result: SearchResultNote,
+    onOpenNote: (String) -> Unit,
+    onToggleDeleted: (Note) -> Unit,
+    animationDelayMillis: Int,
+) {
+    NoteCardItem(
+        note = result.note,
+        backgroundDecoration = {
+            SearchSourceWatermark(
+                sources = result.sources,
+                modifier = Modifier.matchParentSize(),
+            )
+        },
+        onClick = { onOpenNote(result.note.id) },
+        onLongClick = { },
+        isSelectionMode = false,
+        isSelected = false,
+        onToggleDeleted = { onToggleDeleted(result.note) },
+        onReply = { },
+        animationDelayMillis = animationDelayMillis,
+    )
+}
+
+@Composable
+private fun SearchSourceWatermark(
+    sources: List<SearchSourceBadge>,
+    modifier: Modifier = Modifier,
+) {
+    if (sources.isEmpty()) {
+        return
+    }
+
+    Box(
+        modifier = modifier,
+    ) {
+        val leadSource = sources.first()
+        val trailSource = sources.getOrNull(1)
+
+        SearchSourceGlyph(
+            icon = leadSource.icon(),
+            tint = leadSource.tint().copy(alpha = 0.09f),
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 14.dp, end = 12.dp)
+                .size(64.dp),
+        )
+
+        if (trailSource != null) {
+            SearchSourceGlyph(
+                icon = trailSource.icon(),
+                tint = trailSource.tint().copy(alpha = 0.05f),
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 36.dp)
+                    .size(88.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchSourceGlyph(
+    icon: ImageVector,
+    tint: Color,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+) {
+    Icon(
+        imageVector = icon,
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = modifier,
+    )
+}
+
+private fun SearchSourceBadge.icon(): ImageVector =
+    when (this) {
+        SearchSourceBadge.Semantic -> Icons.Filled.AutoAwesome
+        SearchSourceBadge.Fuzzy -> Icons.Filled.ManageSearch
+    }
+
+@Composable
+private fun SearchSourceBadge.tint(): Color =
+    when (this) {
+        SearchSourceBadge.Semantic -> MaterialTheme.colorScheme.tertiary
+        SearchSourceBadge.Fuzzy -> MaterialTheme.colorScheme.primary
+    }

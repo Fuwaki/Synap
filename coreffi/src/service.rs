@@ -7,10 +7,9 @@ use std::{
 
 use crate::error::FfiError;
 use crate::types::{
-    BuildInfo, FilteredNoteStatus, LocalIdentityDTO, NoteDTO, PeerDTO, ShareStatsDTO,
-    StarmapPointDTO,
-    SyncSessionDTO, SyncSessionRecordDTO, TimelineDirection, TimelineNotesPageDTO,
-    TimelineSessionsPageDTO,
+    BuildInfo, FilteredNoteStatus, LocalIdentityDTO, NoteDTO, PeerDTO, SearchResultDTO,
+    ShareStatsDTO, StarmapPointDTO, SyncSessionDTO, SyncSessionRecordDTO, TimelineDirection,
+    TimelineNotesPageDTO, TimelineSessionsPageDTO,
 };
 use synap_core::dto::NoteDTO as CoreNoteDTO;
 use synap_core::service::SynapService as CoreSynapService;
@@ -76,6 +75,10 @@ impl SynapService {
 
     fn map_notes(notes: Vec<CoreNoteDTO>) -> Vec<NoteDTO> {
         notes.into_iter().map(Into::into).collect()
+    }
+
+    fn map_search_results(results: Vec<synap_core::dto::SearchResultDTO>) -> Vec<SearchResultDTO> {
+        results.into_iter().map(Into::into).collect()
     }
 
     fn map_note_page(page: synap_core::dto::TimelineNotesPageDTO) -> TimelineNotesPageDTO {
@@ -223,6 +226,24 @@ impl SynapService {
         self.inner
             .search(&query, limit as usize)
             .map(Self::map_notes)
+            .map_err(Into::into)
+    }
+
+    pub fn search_fusion(
+        &self,
+        query: String,
+        limit: u32,
+        fuzzy_limit: Option<u32>,
+        semantic_limit: Option<u32>,
+    ) -> Result<Vec<SearchResultDTO>, FfiError> {
+        self.inner
+            .search_fusion(
+                &query,
+                limit as usize,
+                fuzzy_limit.map(|value| value as usize),
+                semantic_limit.map(|value| value as usize),
+            )
+            .map(Self::map_search_results)
             .map_err(Into::into)
     }
 

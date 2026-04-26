@@ -42,6 +42,38 @@ fn test_open_memory_database() {
 }
 
 #[test]
+fn test_fusion_search_exposes_sources() {
+    let service = open_memory().unwrap();
+
+    let note = service
+        .create_note(
+            "rust async runtime ownership".to_string(),
+            vec!["rust".to_string(), "async".to_string()],
+        )
+        .unwrap();
+    service
+        .create_note(
+            "gardening watering schedule".to_string(),
+            vec!["life".to_string()],
+        )
+        .unwrap();
+
+    let results = service
+        .search_fusion("async ownership".to_string(), 5, None, Some(10))
+        .unwrap();
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].note.id, note.id);
+    assert!(results[0].score > 0.0);
+    assert!(results[0]
+        .sources
+        .contains(&uniffi_synap_coreffi::SearchSourceDTO::Fuzzy));
+    assert!(results[0]
+        .sources
+        .contains(&uniffi_synap_coreffi::SearchSourceDTO::Semantic));
+}
+
+#[test]
 fn test_peer_management_workflow() {
     let service = open_memory().unwrap();
     let public_key = vec![7u8; 32];

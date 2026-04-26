@@ -182,6 +182,34 @@ fn test_semantic_search_tracks_note_lifecycle() {
 }
 
 #[test]
+fn test_fusion_search_combines_fuzzy_and_semantic_results() {
+    let service = SynapService::new(None).unwrap();
+
+    let rust_note = service
+        .create_note(
+            "rust async runtime ownership".to_string(),
+            vec!["rust".into(), "async".into()],
+        )
+        .unwrap();
+    service
+        .create_note(
+            "gardening watering schedule".to_string(),
+            vec!["life".into()],
+        )
+        .unwrap();
+
+    let results = service
+        .search_fusion("async ownership", 5, None, Some(10))
+        .unwrap();
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].note.id, rust_note.id);
+    assert!(results[0].score > 0.0);
+    assert!(results[0].sources.contains(&SearchSourceDTO::Fuzzy));
+    assert!(results[0].sources.contains(&SearchSourceDTO::Semantic));
+}
+
+#[test]
 fn test_get_starmap_returns_latest_visible_notes_only() {
     let service = SynapService::new(None).unwrap();
 
@@ -469,6 +497,10 @@ fn test_edit_note_creates_new_version_and_refreshes_tags() {
     assert_ne!(created.id, edited.id);
     assert_eq!(edited.content, "learn rust async");
     assert_eq!(edited.tags, vec!["rust".to_string(), "async".to_string()]);
+    let edited_from = edited.edited_from.as_ref().expect("edited_from should exist");
+    assert_eq!(edited_from.id, created.id);
+    assert_eq!(edited_from.content_preview, "learn rust");
+    assert!(edited.reply_to.is_none());
 
     let tag_hits = service.search_tags("async", 10).unwrap();
     assert!(tag_hits.iter().any(|tag| tag == "async"));
@@ -489,6 +521,10 @@ fn test_reply_note_links_child_and_indexes_tags() {
     let child = service
         .reply_note(&parent.id, "child".to_string(), vec!["reply".into()])
         .unwrap();
+    let reply_to = child.reply_to.as_ref().expect("reply_to should exist");
+    assert_eq!(reply_to.id, parent.id);
+    assert_eq!(reply_to.content_preview, "parent");
+    assert!(child.edited_from.is_none());
 
     let replies = service.get_replies(&parent.id, None, 10).unwrap();
     assert_eq!(replies.len(), 1);
@@ -496,6 +532,29 @@ fn test_reply_note_links_child_and_indexes_tags() {
 
     let tag_hits = service.search_tags("reply", 10).unwrap();
     assert!(tag_hits.iter().any(|tag| tag == "reply"));
+}
+
+#[test]
+fn test_edited_reply_exposes_both_relation_briefs() {
+    let service = SynapService::new(None).unwrap();
+
+    let parent = service.create_note("root parent".to_string(), vec![]).unwrap();
+    let reply = service
+        .reply_note(&parent.id, "first reply".to_string(), vec![])
+        .unwrap();
+    let edited = service
+        .edit_note(&reply.id, "reply revised".to_string(), vec![])
+        .unwrap();
+
+    let reply_to = edited.reply_to.as_ref().expect("reply_to should exist");
+    let edited_from = edited
+        .edited_from
+        .as_ref()
+        .expect("edited_from should exist");
+    assert_eq!(reply_to.id, parent.id);
+    assert_eq!(reply_to.content_preview, "root parent");
+    assert_eq!(edited_from.id, reply.id);
+    assert_eq!(edited_from.content_preview, "first reply");
 }
 
 #[test]

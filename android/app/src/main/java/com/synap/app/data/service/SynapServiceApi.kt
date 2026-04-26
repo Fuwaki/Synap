@@ -5,6 +5,7 @@ import com.synap.app.data.model.LocalIdentity
 import com.synap.app.data.model.NoteRecord
 import com.synap.app.data.model.PeerRecord
 import com.synap.app.data.model.PeerTrustStatus
+import com.synap.app.data.model.SearchResultRecord
 import com.synap.app.data.model.ShareImportStats
 import com.synap.app.data.model.StarmapPointRecord
 import com.synap.app.data.model.SyncSession
@@ -80,6 +81,13 @@ interface SynapServiceApi {
     suspend fun getStarmap(): Result<List<StarmapPointRecord>>
 
     suspend fun search(query: String, limit: UInt): Result<List<NoteRecord>>
+
+    suspend fun searchFusion(
+        query: String,
+        limit: UInt,
+        fuzzyLimit: UInt? = null,
+        semanticLimit: UInt? = null,
+    ): Result<List<SearchResultRecord>>
 
     suspend fun searchTags(query: String, limit: UInt): Result<List<String>>
 

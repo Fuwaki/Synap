@@ -3,6 +3,7 @@ package com.synap.app.data.repository
 import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.NoteRecord
 import com.synap.app.data.model.ReplyItem
+import com.synap.app.data.model.SearchResultRecord
 import com.synap.app.data.model.ShareImportStats
 import com.synap.app.data.model.TimelineDirection
 import com.synap.app.data.model.TimelineSessionRecord
@@ -54,6 +55,13 @@ interface SynapRepository {
     suspend fun getOtherVersions(noteId: String): List<NoteRecord>
 
     suspend fun search(query: String, limit: UInt = 50u): List<NoteRecord>
+
+    suspend fun searchFusion(
+        query: String,
+        limit: UInt = 50u,
+        fuzzyLimit: UInt? = null,
+        semanticLimit: UInt? = null,
+    ): List<SearchResultRecord>
 
     suspend fun searchTags(query: String, limit: UInt = 10u): List<String>
 
@@ -181,6 +189,14 @@ class SynapRepositoryImpl @Inject constructor(
 
     override suspend fun search(query: String, limit: UInt): List<NoteRecord> =
         service.search(query, limit).unwrap()
+
+    override suspend fun searchFusion(
+        query: String,
+        limit: UInt,
+        fuzzyLimit: UInt?,
+        semanticLimit: UInt?,
+    ): List<SearchResultRecord> =
+        service.searchFusion(query, limit, fuzzyLimit, semanticLimit).unwrap()
 
     override suspend fun searchTags(query: String, limit: UInt): List<String> =
         service.searchTags(query, limit).unwrap()

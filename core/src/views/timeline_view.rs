@@ -2,11 +2,9 @@ use std::ops::Bound;
 
 use crate::{
     error::NoteError,
-    models::note::{Note, NoteReader, NoteRef},
+    models::note::{NoteReader, NoteRef},
     views::note_view::NoteView,
 };
-use redb::{Database, ReadableDatabase};
-use tempfile::NamedTempFile;
 use uuid::{Builder, Uuid};
 
 const ADAPTIVE_GAP_RATIO_NUMERATOR: u64 = 5;

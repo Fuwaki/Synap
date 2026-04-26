@@ -56,7 +56,7 @@ impl<V: Serialize + DeserializeOwned> VectorStore<V> {
         }
     }
 
-    pub fn iter(&self, tx: &ReadTransaction) -> Result<VectorIter<V>, redb::Error> {
+    pub fn iter(&self, tx: &ReadTransaction) -> Result<VectorIter<'_, V>, redb::Error> {
         let table = tx.open_table(self.def)?;
         let range = table.range::<BlockId>(..)?;
         Ok(VectorIter {

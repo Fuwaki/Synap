@@ -1,5 +1,5 @@
 use synap_core::{
-    dto::{NoteDTO, TimelineNotesPageDTO, TimelineSessionsPageDTO},
+    dto::{NoteDTO, NoteVersionDTO, TimelineNotesPageDTO, TimelineSessionsPageDTO},
     error::ServiceError,
     service::{SynapService, TimelineDirection},
 };
@@ -30,7 +30,7 @@ pub trait DesktopCore {
         limit: usize,
     ) -> CoreResult<Vec<NoteDTO>>;
     fn origins(&self, note_id: &str) -> CoreResult<Vec<NoteDTO>>;
-    fn other_versions(&self, note_id: &str) -> CoreResult<Vec<NoteDTO>>;
+    fn other_versions(&self, note_id: &str) -> CoreResult<Vec<NoteVersionDTO>>;
 
     fn create_note(&self, content: String, tags: Vec<String>) -> CoreResult<NoteDTO>;
     fn reply_note(
@@ -126,7 +126,7 @@ impl DesktopCore for SynapCoreAdapter {
         self.service.get_origins(note_id)
     }
 
-    fn other_versions(&self, note_id: &str) -> CoreResult<Vec<NoteDTO>> {
+    fn other_versions(&self, note_id: &str) -> CoreResult<Vec<NoteVersionDTO>> {
         self.service.get_other_versions(note_id)
     }
 

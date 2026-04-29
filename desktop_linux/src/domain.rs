@@ -1,4 +1,4 @@
-use synap_core::dto::NoteDTO;
+use synap_core::dto::{NoteDTO, NoteVersionDTO};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContentView {
@@ -114,7 +114,7 @@ pub struct NoteDetailData {
     pub note: NoteDTO,
     pub replies: Vec<NoteDTO>,
     pub origins: Vec<NoteDTO>,
-    pub other_versions: Vec<NoteDTO>,
+    pub other_versions: Vec<NoteVersionDTO>,
 }
 
 impl NoteDetailData {

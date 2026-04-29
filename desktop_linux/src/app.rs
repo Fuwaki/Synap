@@ -1043,8 +1043,9 @@ impl App {
                 self.detail_versions_box.append(&row);
             } else {
                 for version in &full.other_versions {
-                    let note_id = version.id.clone();
-                    let row = build_clickable_note_row(version, sender, note_id);
+                    let note = &version.note;
+                    let note_id = note.id.clone();
+                    let row = build_clickable_note_row(note, sender, note_id);
                     self.detail_versions_box.append(&row);
                 }
             }

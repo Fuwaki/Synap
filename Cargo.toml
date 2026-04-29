@@ -4,9 +4,8 @@ members = [
     "corenet",
     "coreffi",
     "cli",
-    "desktop",
     "xtask",
-    "web",
+    "web", "desktop_linux",
 ]
 resolver = "2"
 

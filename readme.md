@@ -32,15 +32,21 @@
 
 ## 工程架构
 
-本项目采用 Monorepo 组织结构。当前 Rust workspace 成员为 `core`、`coreffi`、`cli`、`desktop`、`xtask`、`web`；`android` 由 Gradle 管理。
+本项目采用 Monorepo 组织结构。当前 Rust workspace 成员为 `core`、`coreffi`、`cli`、`desktop_linux`、`xtask`、`web`；`android` 由 Gradle 管理。
 
 * `core/`：Rust 逻辑内核。负责纯 Rust KV 数据落盘、不可变 DAG 状态机维护、读时过滤渲染算法以及同步协议。
 * `coreffi/`：Rust FFI 封装层。通过 UniFFI 将 `core` 暴露给原生平台调用。
 * `cli/`：Rust 命令行前端。提供纯终端环境下的捕获、检索、图谱与同步入口。
-* `desktop/`：Rust 桌面端 UI。
+* `desktop_linux/`：当前 Linux 桌面端实现。基于 Rust + GTK4 + libadwaita，仅面向 Linux 平台发布。
 * `android/`：Kotlin 原生应用。Gradle 在构建期编译 `coreffi`，并接入自动生成的 UniFFI Kotlin 绑定。
 * `xtask/`：Rust 工具目标。当前主要用于从 `coreffi/src/synap.udl` 生成 Android 侧 UniFFI Kotlin 绑定。
 * `web/`：Leptos + Axum RS 全栈前端。使用 `cargo-leptos` 构建。
+
+当前平台策略：
+
+* Linux：已提供 `desktop_linux`，作为当前唯一维护中的桌面端实现。
+* Windows：计划未来单独开发原生桌面端，推荐路线为 C# + WinUI + UniFFI 共享 Rust 核心，而不是直接复用 GTK 壳层。
+* 苹果生态：当前不计划兼容 macOS、iOS 或其他 Apple 平台，也没有对应的发布计划。
 
 ## 构建与运行
 
@@ -56,7 +62,7 @@ cargo build --release -p synap-cli
 运行桌面端：
 
 ```bash
-cargo run -p synap-desktop
+cargo run -p synap-desktop-linux
 ```
 
 构建 Android 调试包：

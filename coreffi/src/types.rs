@@ -1,12 +1,18 @@
 //! FFI-compatible type conversions for Synap.
 
 use synap_core::dto::{
-    LocalIdentityDTO as CoreLocalIdentityDto, NoteDTO as CoreNoteDto, PeerDTO as CorePeerDto,
+    LocalIdentityDTO as CoreLocalIdentityDto, NoteBriefDTO as CoreNoteBriefDto,
+    NoteContentDiffStatsDTO as CoreNoteContentDiffStatsDto, NoteDTO as CoreNoteDto,
+    NoteTagDiffDTO as CoreNoteTagDiffDto, NoteTextChangeDTO as CoreNoteTextChangeDto,
+    NoteTextChangeKindDTO as CoreNoteTextChangeKindDto, NoteVersionDTO as CoreNoteVersionDto,
+    NoteVersionDiffDTO as CoreNoteVersionDiffDto, PeerDTO as CorePeerDto,
     PeerTrustStatusDTO as CorePeerTrustStatusDto, PublicKeyInfoDTO as CorePublicKeyInfoDto,
-    ShareStatsDTO as CoreShareStatsDto, SyncSessionDTO as CoreSyncSessionDto,
-    SyncSessionRecordDTO as CoreSyncSessionRecordDto, SyncSessionRoleDTO as CoreSyncSessionRoleDto,
-    SyncStatsDTO as CoreSyncStatsDto, SyncStatusDTO as CoreSyncStatusDto,
-    TimelineNotesPageDTO as CoreTimelineNotesPageDto, TimelineSessionDTO as CoreTimelineSessionDto,
+    SearchResultDTO as CoreSearchResultDto, SearchSourceDTO as CoreSearchSourceDto,
+    ShareStatsDTO as CoreShareStatsDto, StarmapPointDTO as CoreStarmapPointDto,
+    SyncSessionDTO as CoreSyncSessionDto, SyncSessionRecordDTO as CoreSyncSessionRecordDto,
+    SyncSessionRoleDTO as CoreSyncSessionRoleDto, SyncStatsDTO as CoreSyncStatsDto,
+    SyncStatusDTO as CoreSyncStatusDto, TimelineNotesPageDTO as CoreTimelineNotesPageDto,
+    TimelineSessionDTO as CoreTimelineSessionDto,
     TimelineSessionsPageDTO as CoreTimelineSessionsPageDto,
 };
 use synap_core::service::FilteredNoteStatus as CoreFilteredNoteStatus;
@@ -15,12 +21,31 @@ use synap_core::BuildInfo as CoreBuildInfo;
 
 /// A note DTO that is friendly to UniFFI/Kotlin consumers.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteBriefDTO {
+    pub id: String,
+    pub content_preview: String,
+    pub created_at: i64,
+}
+
+impl From<CoreNoteBriefDto> for NoteBriefDTO {
+    fn from(note: CoreNoteBriefDto) -> Self {
+        Self {
+            id: note.id,
+            content_preview: note.content_preview,
+            created_at: note.created_at as i64,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteDTO {
     pub id: String,
     pub content: String,
     pub tags: Vec<String>,
     pub created_at: i64,
     pub deleted: bool,
+    pub reply_to: Option<NoteBriefDTO>,
+    pub edited_from: Option<NoteBriefDTO>,
 }
 
 impl From<CoreNoteDto> for NoteDTO {
@@ -31,6 +56,140 @@ impl From<CoreNoteDto> for NoteDTO {
             tags: note.tags,
             created_at: note.created_at as i64,
             deleted: note.deleted,
+            reply_to: note.reply_to.map(Into::into),
+            edited_from: note.edited_from.map(Into::into),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteTextChangeKindDTO {
+    Equal,
+    Insert,
+    Delete,
+}
+
+impl From<CoreNoteTextChangeKindDto> for NoteTextChangeKindDTO {
+    fn from(kind: CoreNoteTextChangeKindDto) -> Self {
+        match kind {
+            CoreNoteTextChangeKindDto::Equal => Self::Equal,
+            CoreNoteTextChangeKindDto::Insert => Self::Insert,
+            CoreNoteTextChangeKindDto::Delete => Self::Delete,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteTextChangeDTO {
+    pub kind: NoteTextChangeKindDTO,
+    pub value: String,
+}
+
+impl From<CoreNoteTextChangeDto> for NoteTextChangeDTO {
+    fn from(change: CoreNoteTextChangeDto) -> Self {
+        Self {
+            kind: change.kind.into(),
+            value: change.value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteTagDiffDTO {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+impl From<CoreNoteTagDiffDto> for NoteTagDiffDTO {
+    fn from(diff: CoreNoteTagDiffDto) -> Self {
+        Self {
+            added: diff.added,
+            removed: diff.removed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteContentDiffStatsDTO {
+    pub inserted_chars: u32,
+    pub deleted_chars: u32,
+    pub inserted_lines: u32,
+    pub deleted_lines: u32,
+}
+
+impl From<CoreNoteContentDiffStatsDto> for NoteContentDiffStatsDTO {
+    fn from(stats: CoreNoteContentDiffStatsDto) -> Self {
+        Self {
+            inserted_chars: stats.inserted_chars,
+            deleted_chars: stats.deleted_chars,
+            inserted_lines: stats.inserted_lines,
+            deleted_lines: stats.deleted_lines,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteVersionDiffDTO {
+    pub tags: NoteTagDiffDTO,
+    pub content: Vec<NoteTextChangeDTO>,
+    pub content_summary: Vec<NoteTextChangeDTO>,
+    pub content_stats: NoteContentDiffStatsDTO,
+}
+
+impl From<CoreNoteVersionDiffDto> for NoteVersionDiffDTO {
+    fn from(diff: CoreNoteVersionDiffDto) -> Self {
+        Self {
+            tags: diff.tags.into(),
+            content: diff.content.into_iter().map(Into::into).collect(),
+            content_summary: diff.content_summary.into_iter().map(Into::into).collect(),
+            content_stats: diff.content_stats.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteVersionDTO {
+    pub note: NoteDTO,
+    pub diff: NoteVersionDiffDTO,
+}
+
+impl From<CoreNoteVersionDto> for NoteVersionDTO {
+    fn from(version: CoreNoteVersionDto) -> Self {
+        Self {
+            note: version.note.into(),
+            diff: version.diff.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchSourceDTO {
+    Fuzzy,
+    Semantic,
+}
+
+impl From<CoreSearchSourceDto> for SearchSourceDTO {
+    fn from(source: CoreSearchSourceDto) -> Self {
+        match source {
+            CoreSearchSourceDto::Fuzzy => Self::Fuzzy,
+            CoreSearchSourceDto::Semantic => Self::Semantic,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchResultDTO {
+    pub note: NoteDTO,
+    pub score: f32,
+    pub sources: Vec<SearchSourceDTO>,
+}
+
+impl From<CoreSearchResultDto> for SearchResultDTO {
+    fn from(result: CoreSearchResultDto) -> Self {
+        Self {
+            note: result.note.into(),
+            score: result.score,
+            sources: result.sources.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -80,6 +239,23 @@ impl From<CoreTimelineSessionsPageDto> for TimelineSessionsPageDTO {
         Self {
             sessions: page.sessions.into_iter().map(Into::into).collect(),
             next_cursor: page.next_cursor,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StarmapPointDTO {
+    pub id: String,
+    pub x: f32,
+    pub y: f32,
+}
+
+impl From<CoreStarmapPointDto> for StarmapPointDTO {
+    fn from(point: CoreStarmapPointDto) -> Self {
+        Self {
+            id: point.id,
+            x: point.x,
+            y: point.y,
         }
     }
 }
@@ -196,6 +372,7 @@ pub struct PublicKeyInfoDTO {
     pub algorithm: String,
     pub public_key: Vec<u8>,
     pub fingerprint: Vec<u8>,
+    pub avatar_png: Vec<u8>,
     pub display_public_key_base64: String,
     pub kaomoji_fingerprint: String,
 }
@@ -207,6 +384,7 @@ impl From<CorePublicKeyInfoDto> for PublicKeyInfoDTO {
             algorithm: info.algorithm,
             public_key: info.public_key,
             fingerprint: info.fingerprint,
+            avatar_png: info.avatar_png,
             display_public_key_base64: info.display_public_key_base64,
             kaomoji_fingerprint: info.kaomoji_fingerprint,
         }
@@ -234,6 +412,7 @@ pub struct PeerDTO {
     pub algorithm: String,
     pub public_key: Vec<u8>,
     pub fingerprint: Vec<u8>,
+    pub avatar_png: Vec<u8>,
     pub kaomoji_fingerprint: String,
     pub note: Option<String>,
     pub status: PeerTrustStatusDTO,
@@ -246,6 +425,7 @@ impl From<CorePeerDto> for PeerDTO {
             algorithm: peer.algorithm,
             public_key: peer.public_key,
             fingerprint: peer.fingerprint,
+            avatar_png: peer.avatar_png,
             kaomoji_fingerprint: peer.kaomoji_fingerprint,
             note: peer.note,
             status: peer.status.into(),
@@ -381,6 +561,12 @@ mod tests {
             tags: vec!["rust".to_string(), "android".to_string()],
             created_at: 1_742_165_200_000,
             deleted: false,
+            reply_to: Some(CoreNoteBriefDto {
+                id: "0195f9a8-d085-7f9d-a604-469e0f91d0e4".to_string(),
+                content_preview: "Parent preview".to_string(),
+                created_at: 1_742_165_100_000,
+            }),
+            edited_from: None,
         };
 
         let ffi_note: NoteDTO = core_note.into();
@@ -389,6 +575,14 @@ mod tests {
         assert_eq!(ffi_note.tags, vec!["rust", "android"]);
         assert_eq!(ffi_note.created_at, 1_742_165_200_000);
         assert!(!ffi_note.deleted);
+        assert_eq!(
+            ffi_note
+                .reply_to
+                .as_ref()
+                .map(|brief| brief.content_preview.as_str()),
+            Some("Parent preview")
+        );
+        assert!(ffi_note.edited_from.is_none());
     }
 
     #[test]

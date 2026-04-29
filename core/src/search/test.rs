@@ -1,6 +1,9 @@
+#![cfg(test)]
+
 // tests/integration.rs
 
 use std::time::Duration;
+
 use uuid::Uuid;
 
 use crate::search::{searcher::FuzzyIndex, types::Searchable};

@@ -33,6 +33,21 @@ fun formatNoteTime(timestamp: Long): String {
     }
 }
 
+fun formatNoteDate(timestamp: Long): String {
+    val normalizedTimestamp = normalizeEpochMillis(timestamp)
+    val cal = Calendar.getInstance()
+    cal.timeInMillis = System.currentTimeMillis()
+    val currentYear = cal.get(Calendar.YEAR)
+    cal.timeInMillis = normalizedTimestamp
+    val targetYear = cal.get(Calendar.YEAR)
+
+    return if (currentYear != targetYear) {
+        SimpleDateFormat("yyyy年M月d日", Locale.getDefault()).format(Date(normalizedTimestamp))
+    } else {
+        SimpleDateFormat("M月d日", Locale.getDefault()).format(Date(normalizedTimestamp))
+    }
+}
+
 fun formatSessionTimeRange(startedAt: Long, endedAt: Long): String {
     val normalizedStart = normalizeEpochMillis(startedAt)
     val normalizedEnd = normalizeEpochMillis(endedAt)

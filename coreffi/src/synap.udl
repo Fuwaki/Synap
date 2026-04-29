@@ -31,12 +31,66 @@ enum PeerTrustStatusDTO {
     "Revoked",
 };
 
+dictionary NoteBriefDTO {
+    string id;
+    string content_preview;
+    i64 created_at;
+};
+
 dictionary NoteDTO {
     string id;
     string content;
     sequence<string> tags;
     i64 created_at;
     boolean deleted;
+    NoteBriefDTO? reply_to;
+    NoteBriefDTO? edited_from;
+};
+
+enum NoteTextChangeKindDTO {
+    "Equal",
+    "Insert",
+    "Delete",
+};
+
+dictionary NoteTextChangeDTO {
+    NoteTextChangeKindDTO kind;
+    string value;
+};
+
+dictionary NoteTagDiffDTO {
+    sequence<string> added;
+    sequence<string> removed;
+};
+
+dictionary NoteContentDiffStatsDTO {
+    u32 inserted_chars;
+    u32 deleted_chars;
+    u32 inserted_lines;
+    u32 deleted_lines;
+};
+
+dictionary NoteVersionDiffDTO {
+    NoteTagDiffDTO tags;
+    sequence<NoteTextChangeDTO> content;
+    sequence<NoteTextChangeDTO> content_summary;
+    NoteContentDiffStatsDTO content_stats;
+};
+
+dictionary NoteVersionDTO {
+    NoteDTO note;
+    NoteVersionDiffDTO diff;
+};
+
+enum SearchSourceDTO {
+    "Fuzzy",
+    "Semantic",
+};
+
+dictionary SearchResultDTO {
+    NoteDTO note;
+    float score;
+    sequence<SearchSourceDTO> sources;
 };
 
 dictionary TimelineNotesPageDTO {
@@ -54,6 +108,12 @@ dictionary TimelineSessionDTO {
 dictionary TimelineSessionsPageDTO {
     sequence<TimelineSessionDTO> sessions;
     string? next_cursor;
+};
+
+dictionary StarmapPointDTO {
+    string id;
+    float x;
+    float y;
 };
 
 dictionary ShareStatsDTO {
@@ -89,6 +149,7 @@ dictionary PublicKeyInfoDTO {
     string algorithm;
     bytes public_key;
     bytes fingerprint;
+    bytes avatar_png;
     string display_public_key_base64;
     string kaomoji_fingerprint;
 };
@@ -103,6 +164,7 @@ dictionary PeerDTO {
     string algorithm;
     bytes public_key;
     bytes fingerprint;
+    bytes avatar_png;
     string kaomoji_fingerprint;
     string? note;
     PeerTrustStatusDTO status;
@@ -162,11 +224,18 @@ interface SynapService {
         u32? limit
     );
     [Throws=FfiError] sequence<NoteDTO> get_origins(string child_id);
-    [Throws=FfiError] sequence<NoteDTO> get_previous_versions(string note_id);
-    [Throws=FfiError] sequence<NoteDTO> get_next_versions(string note_id);
-    [Throws=FfiError] sequence<NoteDTO> get_other_versions(string note_id);
+    [Throws=FfiError] sequence<NoteVersionDTO> get_previous_versions(string note_id);
+    [Throws=FfiError] sequence<NoteVersionDTO> get_next_versions(string note_id);
+    [Throws=FfiError] sequence<NoteVersionDTO> get_other_versions(string note_id);
     [Throws=FfiError] sequence<NoteDTO> get_deleted_notes(string? cursor, u32? limit);
+    [Throws=FfiError] sequence<StarmapPointDTO> get_starmap();
     [Throws=FfiError] sequence<NoteDTO> search(string query, u32 limit);
+    [Throws=FfiError] sequence<SearchResultDTO> search_fusion(
+        string query,
+        u32 limit,
+        u32? fuzzy_limit,
+        u32? semantic_limit
+    );
     [Throws=FfiError] sequence<string> search_tags(string query, u32 limit);
     [Throws=FfiError] sequence<string> recommend_tag(string content, u32 limit);
     [Throws=FfiError] sequence<string> get_all_tags();

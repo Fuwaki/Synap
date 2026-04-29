@@ -40,6 +40,8 @@ fn test_open_existing_db_auto_creates_crypto_schema_and_identity() {
     let local_identity = service.get_local_identity().unwrap();
     assert_eq!(local_identity.identity.public_key.len(), 32);
     assert_eq!(local_identity.signing.public_key.len(), 32);
+    assert!(!local_identity.identity.avatar_png.is_empty());
+    assert!(!local_identity.signing.avatar_png.is_empty());
     assert!(!local_identity.identity.kaomoji_fingerprint.is_empty());
     assert!(!local_identity.signing.kaomoji_fingerprint.is_empty());
 
@@ -117,6 +119,139 @@ fn test_recommend_tag_tracks_note_lifecycle() {
     service.restore_note(&edited.id).unwrap();
     let after_restore = service.recommend_tag("sql planner", 3).unwrap();
     assert!(after_restore.iter().any(|tag| tag == "database"));
+}
+
+#[test]
+fn test_semantic_search_initializes_from_existing_notes() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("synap.redb");
+    let service = SynapService::new(Some(db_path.to_string_lossy().into_owned())).unwrap();
+
+    service
+        .create_note(
+            "rust async runtime ownership".to_string(),
+            vec!["rust".into()],
+        )
+        .unwrap();
+    service
+        .create_note(
+            "gardening watering schedule".to_string(),
+            vec!["life".into()],
+        )
+        .unwrap();
+
+    drop(service);
+
+    let reopened = SynapService::new(Some(db_path.to_string_lossy().into_owned())).unwrap();
+    let results = reopened.search_semantic("async ownership", 5).unwrap();
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].content, "rust async runtime ownership");
+}
+
+#[test]
+fn test_semantic_search_tracks_note_lifecycle() {
+    let service = SynapService::new(None).unwrap();
+
+    let original = service
+        .create_note("tokio runtime ownership".to_string(), vec!["async".into()])
+        .unwrap();
+
+    let initial = service.search_semantic("tokio runtime", 5).unwrap();
+    assert!(initial.iter().any(|note| note.id == original.id));
+
+    let edited = service
+        .edit_note(
+            &original.id,
+            "sql query planner index".to_string(),
+            vec!["database".into()],
+        )
+        .unwrap();
+
+    let old_results = service.search_semantic("tokio runtime", 5).unwrap();
+    assert!(!old_results.iter().any(|note| note.id == edited.id));
+
+    let updated_results = service.search_semantic("sql planner", 5).unwrap();
+    assert!(updated_results.iter().any(|note| note.id == edited.id));
+
+    service.delete_note(&edited.id).unwrap();
+    let after_delete = service.search_semantic("sql planner", 5).unwrap();
+    assert!(!after_delete.iter().any(|note| note.id == edited.id));
+
+    service.restore_note(&edited.id).unwrap();
+    let after_restore = service.search_semantic("sql planner", 5).unwrap();
+    assert!(after_restore.iter().any(|note| note.id == edited.id));
+}
+
+#[test]
+fn test_fusion_search_combines_fuzzy_and_semantic_results() {
+    let service = SynapService::new(None).unwrap();
+
+    let rust_note = service
+        .create_note(
+            "rust async runtime ownership".to_string(),
+            vec!["rust".into(), "async".into()],
+        )
+        .unwrap();
+    service
+        .create_note(
+            "gardening watering schedule".to_string(),
+            vec!["life".into()],
+        )
+        .unwrap();
+
+    let results = service
+        .search_fusion("async ownership", 5, None, Some(10))
+        .unwrap();
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].note.id, rust_note.id);
+    assert!(results[0].score > 0.0);
+    assert!(results[0].sources.contains(&SearchSourceDTO::Fuzzy));
+    assert!(results[0].sources.contains(&SearchSourceDTO::Semantic));
+}
+
+#[test]
+fn test_get_starmap_returns_latest_visible_notes_only() {
+    let service = SynapService::new(None).unwrap();
+
+    let original = service
+        .create_note("tokio runtime ownership".to_string(), vec!["async".into()])
+        .unwrap();
+    let edited = service
+        .edit_note(
+            &original.id,
+            "tokio runtime ownership updated".to_string(),
+            vec!["async".into()],
+        )
+        .unwrap();
+    let deleted = service
+        .create_note("deleted note".to_string(), vec!["misc".into()])
+        .unwrap();
+    let live = service
+        .create_note("live note".to_string(), vec!["misc".into()])
+        .unwrap();
+
+    service.delete_note(&deleted.id).unwrap();
+
+    let points = service.get_starmap().unwrap();
+    let ids = points
+        .iter()
+        .map(|point| point.id.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(ids.contains(&edited.id.as_str()));
+    assert!(ids.contains(&live.id.as_str()));
+    assert!(!ids.contains(&original.id.as_str()));
+    assert!(!ids.contains(&deleted.id.as_str()));
+    assert!(points.iter().all(|point| {
+        point.x.is_finite()
+            && point.y.is_finite()
+            && point.x >= -1.0
+            && point.x <= 1.0
+            && point.y >= -1.0
+            && point.y <= 1.0
+    }));
 }
 
 #[test]
@@ -364,6 +499,13 @@ fn test_edit_note_creates_new_version_and_refreshes_tags() {
     assert_ne!(created.id, edited.id);
     assert_eq!(edited.content, "learn rust async");
     assert_eq!(edited.tags, vec!["rust".to_string(), "async".to_string()]);
+    let edited_from = edited
+        .edited_from
+        .as_ref()
+        .expect("edited_from should exist");
+    assert_eq!(edited_from.id, created.id);
+    assert_eq!(edited_from.content_preview, "learn rust");
+    assert!(edited.reply_to.is_none());
 
     let tag_hits = service.search_tags("async", 10).unwrap();
     assert!(tag_hits.iter().any(|tag| tag == "async"));
@@ -384,6 +526,10 @@ fn test_reply_note_links_child_and_indexes_tags() {
     let child = service
         .reply_note(&parent.id, "child".to_string(), vec!["reply".into()])
         .unwrap();
+    let reply_to = child.reply_to.as_ref().expect("reply_to should exist");
+    assert_eq!(reply_to.id, parent.id);
+    assert_eq!(reply_to.content_preview, "parent");
+    assert!(child.edited_from.is_none());
 
     let replies = service.get_replies(&parent.id, None, 10).unwrap();
     assert_eq!(replies.len(), 1);
@@ -391,6 +537,31 @@ fn test_reply_note_links_child_and_indexes_tags() {
 
     let tag_hits = service.search_tags("reply", 10).unwrap();
     assert!(tag_hits.iter().any(|tag| tag == "reply"));
+}
+
+#[test]
+fn test_edited_reply_exposes_both_relation_briefs() {
+    let service = SynapService::new(None).unwrap();
+
+    let parent = service
+        .create_note("root parent".to_string(), vec![])
+        .unwrap();
+    let reply = service
+        .reply_note(&parent.id, "first reply".to_string(), vec![])
+        .unwrap();
+    let edited = service
+        .edit_note(&reply.id, "reply revised".to_string(), vec![])
+        .unwrap();
+
+    let reply_to = edited.reply_to.as_ref().expect("reply_to should exist");
+    let edited_from = edited
+        .edited_from
+        .as_ref()
+        .expect("edited_from should exist");
+    assert_eq!(reply_to.id, parent.id);
+    assert_eq!(reply_to.content_preview, "root parent");
+    assert_eq!(edited_from.id, reply.id);
+    assert_eq!(edited_from.content_preview, "first reply");
 }
 
 #[test]
@@ -602,28 +773,70 @@ fn test_version_queries_return_live_related_versions() {
     let service = SynapService::new(Some(db_path.to_string_lossy().into_owned())).unwrap();
 
     let v1 = service
-        .create_note("Version 1".to_string(), vec![])
+        .create_note("Version 1".to_string(), vec!["alpha".to_string()])
         .unwrap();
     let v2a = service
-        .edit_note(&v1.id, "Version 2A".to_string(), vec![])
+        .edit_note(
+            &v1.id,
+            "Version 2A".to_string(),
+            vec!["alpha".to_string(), "beta".to_string()],
+        )
         .unwrap();
     let v2b = service
-        .edit_note(&v1.id, "Version 2B".to_string(), vec![])
+        .edit_note(&v1.id, "Version 2B".to_string(), vec!["gamma".to_string()])
         .unwrap();
 
     let previous = service.get_previous_versions(&v2a.id).unwrap();
     assert_eq!(previous.len(), 1);
-    assert_eq!(previous[0].id, v1.id);
+    assert_eq!(previous[0].note.id, v1.id);
+    assert_eq!(previous[0].diff.tags.added, Vec::<String>::new());
+    assert_eq!(previous[0].diff.tags.removed, vec!["beta"]);
+    assert!(previous[0]
+        .diff
+        .content
+        .iter()
+        .any(|change| !matches!(change.kind, crate::dto::NoteTextChangeKindDTO::Equal)));
 
     let next = service.get_next_versions(&v1.id).unwrap();
     assert_eq!(next.len(), 2);
-    assert!(next.iter().any(|note| note.id == v2a.id));
-    assert!(next.iter().any(|note| note.id == v2b.id));
+    assert!(next.iter().any(|note| note.note.id == v2a.id));
+    assert!(next.iter().any(|note| note.note.id == v2b.id));
+    let next_v2a = next.iter().find(|note| note.note.id == v2a.id).unwrap();
+    assert_eq!(next_v2a.diff.tags.added, vec!["beta"]);
+    assert_eq!(next_v2a.diff.tags.removed, Vec::<String>::new());
+    assert!(next_v2a
+        .diff
+        .content
+        .iter()
+        .any(|change| !matches!(change.kind, crate::dto::NoteTextChangeKindDTO::Equal)));
 
     let others = service.get_other_versions(&v2a.id).unwrap();
     assert_eq!(others.len(), 2);
-    assert!(others.iter().any(|note| note.id == v1.id));
-    assert!(others.iter().any(|note| note.id == v2b.id));
+    assert!(others.iter().any(|note| note.note.id == v1.id));
+    assert!(others.iter().any(|note| note.note.id == v2b.id));
+}
+
+#[test]
+fn test_version_query_diff_stats_count_changed_lines_by_line_diff() {
+    let service = SynapService::new(None).unwrap();
+
+    let original = service
+        .create_note("alpha\nbeta\ngamma".to_string(), vec![])
+        .unwrap();
+    let edited = service
+        .edit_note(
+            &original.id,
+            "alpha\nbeta changed\ngamma\ndelta".to_string(),
+            vec![],
+        )
+        .unwrap();
+
+    let next = service.get_next_versions(&original.id).unwrap();
+    let version = next.iter().find(|item| item.note.id == edited.id).unwrap();
+
+    assert_eq!(version.diff.content_stats.inserted_lines, 2);
+    assert_eq!(version.diff.content_stats.deleted_lines, 1);
+    assert!(version.diff.content_stats.inserted_chars > 0);
 }
 
 #[test]

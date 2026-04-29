@@ -10,6 +10,15 @@ fn sorted_ids(notes: &[uniffi_synap_coreffi::NoteDTO]) -> Vec<String> {
     ids
 }
 
+fn sorted_version_ids(notes: &[uniffi_synap_coreffi::NoteVersionDTO]) -> Vec<String> {
+    let mut ids = notes
+        .iter()
+        .map(|note| note.note.id.clone())
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids
+}
+
 #[test]
 fn test_open_file_database() {
     let dir = tempdir().unwrap();
@@ -39,6 +48,38 @@ fn test_open_memory_database() {
 
     let note = service.create_note("Test".to_string(), vec![]).unwrap();
     assert_eq!(note.content, "Test");
+}
+
+#[test]
+fn test_fusion_search_exposes_sources() {
+    let service = open_memory().unwrap();
+
+    let note = service
+        .create_note(
+            "rust async runtime ownership".to_string(),
+            vec!["rust".to_string(), "async".to_string()],
+        )
+        .unwrap();
+    service
+        .create_note(
+            "gardening watering schedule".to_string(),
+            vec!["life".to_string()],
+        )
+        .unwrap();
+
+    let results = service
+        .search_fusion("async ownership".to_string(), 5, None, Some(10))
+        .unwrap();
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].note.id, note.id);
+    assert!(results[0].score > 0.0);
+    assert!(results[0]
+        .sources
+        .contains(&uniffi_synap_coreffi::SearchSourceDTO::Fuzzy));
+    assert!(results[0]
+        .sources
+        .contains(&uniffi_synap_coreffi::SearchSourceDTO::Semantic));
 }
 
 #[test]
@@ -218,16 +259,16 @@ fn test_origins_and_version_queries_workflow() {
 
     let previous = service.get_previous_versions(v2a.id.clone()).unwrap();
     assert_eq!(previous.len(), 1);
-    assert_eq!(previous[0].id, root.id);
+    assert_eq!(previous[0].note.id, root.id);
 
     let next = service.get_next_versions(root.id.clone()).unwrap();
     assert_eq!(next.len(), 2);
-    let next_ids = sorted_ids(&next);
+    let next_ids = sorted_version_ids(&next);
     assert_eq!(next_ids, sorted_ids(&[v2a.clone(), v2b.clone()]));
 
     let other_versions = service.get_other_versions(v2a.id).unwrap();
     assert_eq!(other_versions.len(), 2);
-    let other_ids = sorted_ids(&other_versions);
+    let other_ids = sorted_version_ids(&other_versions);
     assert_eq!(other_ids, sorted_ids(&[root, v2b]));
 }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,6 +59,7 @@ import com.synap.app.LocalNoteFontFamily
 import com.synap.app.LocalNoteFontWeight
 import com.synap.app.LocalNoteTextSize
 import com.synap.app.ui.model.Note
+import com.synap.app.ui.util.formatNoteDate
 import com.synap.app.ui.util.formatNoteTime
 import kotlinx.coroutines.launch
 
@@ -187,6 +189,7 @@ fun buildMarkdownAnnotatedString(
 fun NoteCardItem(
     note: Note,
     modifier: Modifier = Modifier,
+    backgroundDecoration: @Composable (BoxScope.() -> Unit) = {},
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     isSelectionMode: Boolean,
@@ -306,86 +309,96 @@ fun NoteCardItem(
                 }
             ),
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    val primaryColor = MaterialTheme.colorScheme.primary
-                    val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
-                    val baseFontSize = LocalNoteTextSize.current.value
+            Box {
+                backgroundDecoration()
 
-                    // 使用共享渲染引擎（Compact 紧凑模式）
-                    val annotatedContent = remember(note.content, primaryColor, highlightColor, baseFontSize) {
-                        buildMarkdownAnnotatedString(note.content, primaryColor, highlightColor, baseFontSize, isCompact = true)
-                    }
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        val primaryColor = MaterialTheme.colorScheme.primary
+                        val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+                        val baseFontSize = LocalNoteTextSize.current.value
 
-                    Text(
-                        text = annotatedContent,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontFamily = LocalNoteFontFamily.current,
-                            fontWeight = LocalNoteFontWeight.current,
-                            fontSize = LocalNoteTextSize.current,
-                            lineHeight = LocalNoteTextSize.current * 1.5f
-                        ),
-                        color = if (note.isDeleted) Color.Gray else Color.Unspecified,
-                        textDecoration = if (note.isDeleted) TextDecoration.LineThrough else TextDecoration.None,
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                        // 使用共享渲染引擎（Compact 紧凑模式）
+                        val annotatedContent = remember(note.content, primaryColor, highlightColor, baseFontSize) {
+                            buildMarkdownAnnotatedString(note.content, primaryColor, highlightColor, baseFontSize, isCompact = true)
+                        }
 
-                    if (!note.parentSummary.isNullOrBlank()) {
                         Text(
-                            text = "回复自“${note.parentSummary}”",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp),
+                            text = annotatedContent,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontFamily = LocalNoteFontFamily.current,
+                                fontWeight = LocalNoteFontWeight.current,
+                                fontSize = LocalNoteTextSize.current,
+                                lineHeight = LocalNoteTextSize.current * 1.5f
+                            ),
+                            color = if (note.isDeleted) Color.Gray else Color.Unspecified,
+                            textDecoration = if (note.isDeleted) TextDecoration.LineThrough else TextDecoration.None,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = formatNoteTime(note.timestamp),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(end = 12.dp),
-                        )
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            note.tags.take(5).forEach { tag ->
-                                Surface(
-                                    color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer,
-                                    shape = MaterialTheme.shapes.small,
-                                ) {
+                        val replyContext = note.replyTo?.contentPreview ?: note.parentSummary
+                        if (!replyContext.isNullOrBlank()) {
+                            Text(
+                                text = "回复自“${replyContext}”",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val timeLabel = if (note.editedFrom != null) {
+                            "编辑于 ${formatNoteDate(note.timestamp)}"
+                        } else {
+                            formatNoteTime(note.timestamp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = timeLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 12.dp),
+                            )
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                note.tags.take(5).forEach { tag ->
+                                    Surface(
+                                        color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer,
+                                        shape = MaterialTheme.shapes.small,
+                                    ) {
+                                        Text(
+                                            text = tag,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                }
+                                if (note.tags.size > 5) {
                                     Text(
-                                        text = tag,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        text = "+${note.tags.size - 5}",
                                         style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 4.dp),
                                     )
                                 }
                             }
-                            if (note.tags.size > 5) {
-                                Text(
-                                    text = "+${note.tags.size - 5}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(vertical = 4.dp),
-                                )
-                            }
                         }
                     }
-                }
 
-                // 多选模式下的复选框
-                AnimatedVisibility(visible = isSelectionMode) {
-                    Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = null,
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
+                    // 多选模式下的复选框
+                    AnimatedVisibility(visible = isSelectionMode) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = null,
+                            modifier = Modifier.padding(start = 16.dp)
+                        )
+                    }
                 }
             }
         }

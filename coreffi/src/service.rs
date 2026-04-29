@@ -7,11 +7,11 @@ use std::{
 
 use crate::error::FfiError;
 use crate::types::{
-    BuildInfo, FilteredNoteStatus, LocalIdentityDTO, NoteDTO, PeerDTO, ShareStatsDTO,
-    SyncSessionDTO, SyncSessionRecordDTO, TimelineDirection, TimelineNotesPageDTO,
-    TimelineSessionsPageDTO,
+    BuildInfo, FilteredNoteStatus, LocalIdentityDTO, NoteDTO, NoteVersionDTO, PeerDTO,
+    SearchResultDTO, ShareStatsDTO, StarmapPointDTO, SyncSessionDTO, SyncSessionRecordDTO,
+    TimelineDirection, TimelineNotesPageDTO, TimelineSessionsPageDTO,
 };
-use synap_core::dto::NoteDTO as CoreNoteDTO;
+use synap_core::dto::{NoteDTO as CoreNoteDTO, NoteVersionDTO as CoreNoteVersionDTO};
 use synap_core::service::SynapService as CoreSynapService;
 
 struct ForeignSyncTransport {
@@ -77,6 +77,14 @@ impl SynapService {
         notes.into_iter().map(Into::into).collect()
     }
 
+    fn map_note_versions(versions: Vec<CoreNoteVersionDTO>) -> Vec<NoteVersionDTO> {
+        versions.into_iter().map(Into::into).collect()
+    }
+
+    fn map_search_results(results: Vec<synap_core::dto::SearchResultDTO>) -> Vec<SearchResultDTO> {
+        results.into_iter().map(Into::into).collect()
+    }
+
     fn map_note_page(page: synap_core::dto::TimelineNotesPageDTO) -> TimelineNotesPageDTO {
         page.into()
     }
@@ -87,6 +95,10 @@ impl SynapService {
 
     fn map_share_stats(stats: synap_core::dto::ShareStatsDTO) -> ShareStatsDTO {
         stats.into()
+    }
+
+    fn map_starmap_points(points: Vec<synap_core::dto::StarmapPointDTO>) -> Vec<StarmapPointDTO> {
+        points.into_iter().map(Into::into).collect()
     }
 
     fn map_sync_session(session: synap_core::dto::SyncSessionDTO) -> SyncSessionDTO {
@@ -175,24 +187,24 @@ impl SynapService {
             .map_err(Into::into)
     }
 
-    pub fn get_previous_versions(&self, note_id: String) -> Result<Vec<NoteDTO>, FfiError> {
+    pub fn get_previous_versions(&self, note_id: String) -> Result<Vec<NoteVersionDTO>, FfiError> {
         self.inner
             .get_previous_versions(&note_id)
-            .map(Self::map_notes)
+            .map(Self::map_note_versions)
             .map_err(Into::into)
     }
 
-    pub fn get_next_versions(&self, note_id: String) -> Result<Vec<NoteDTO>, FfiError> {
+    pub fn get_next_versions(&self, note_id: String) -> Result<Vec<NoteVersionDTO>, FfiError> {
         self.inner
             .get_next_versions(&note_id)
-            .map(Self::map_notes)
+            .map(Self::map_note_versions)
             .map_err(Into::into)
     }
 
-    pub fn get_other_versions(&self, note_id: String) -> Result<Vec<NoteDTO>, FfiError> {
+    pub fn get_other_versions(&self, note_id: String) -> Result<Vec<NoteVersionDTO>, FfiError> {
         self.inner
             .get_other_versions(&note_id)
-            .map(Self::map_notes)
+            .map(Self::map_note_versions)
             .map_err(Into::into)
     }
 
@@ -207,10 +219,35 @@ impl SynapService {
             .map_err(Into::into)
     }
 
+    pub fn get_starmap(&self) -> Result<Vec<StarmapPointDTO>, FfiError> {
+        self.inner
+            .get_starmap()
+            .map(Self::map_starmap_points)
+            .map_err(Into::into)
+    }
+
     pub fn search(&self, query: String, limit: u32) -> Result<Vec<NoteDTO>, FfiError> {
         self.inner
             .search(&query, limit as usize)
             .map(Self::map_notes)
+            .map_err(Into::into)
+    }
+
+    pub fn search_fusion(
+        &self,
+        query: String,
+        limit: u32,
+        fuzzy_limit: Option<u32>,
+        semantic_limit: Option<u32>,
+    ) -> Result<Vec<SearchResultDTO>, FfiError> {
+        self.inner
+            .search_fusion(
+                &query,
+                limit as usize,
+                fuzzy_limit.map(|value| value as usize),
+                semantic_limit.map(|value| value as usize),
+            )
+            .map(Self::map_search_results)
             .map_err(Into::into)
     }
 
@@ -556,15 +593,15 @@ mod tests {
 
         let previous = service.get_previous_versions(v2.id.clone()).unwrap();
         assert_eq!(previous.len(), 1);
-        assert_eq!(previous[0].id, root.id);
+        assert_eq!(previous[0].note.id, root.id);
 
         let next = service.get_next_versions(root.id.clone()).unwrap();
         assert_eq!(next.len(), 1);
-        assert_eq!(next[0].id, v2.id);
+        assert_eq!(next[0].note.id, v2.id);
 
         let other_versions = service.get_other_versions(v2.id).unwrap();
         assert_eq!(other_versions.len(), 1);
-        assert_eq!(other_versions[0].id, root.id);
+        assert_eq!(other_versions[0].note.id, root.id);
     }
 
     #[test]
@@ -654,9 +691,11 @@ mod tests {
         let identity = service.get_local_identity().unwrap();
         assert_eq!(identity.identity.algorithm, "x25519");
         assert_eq!(identity.identity.public_key.len(), 32);
+        assert!(!identity.identity.avatar_png.is_empty());
         assert!(!identity.identity.kaomoji_fingerprint.is_empty());
         assert_eq!(identity.signing.algorithm, "ed25519");
         assert_eq!(identity.signing.public_key.len(), 32);
+        assert!(!identity.signing.avatar_png.is_empty());
         assert!(!identity.signing.kaomoji_fingerprint.is_empty());
 
         let peers = service.get_peers().unwrap();
@@ -678,6 +717,7 @@ mod tests {
 
         assert_eq!(peer.algorithm, "ed25519");
         assert_eq!(peer.public_key, peer_identity.signing.public_key);
+        assert!(!peer.avatar_png.is_empty());
         assert_eq!(peer.note.as_deref(), Some("android phone"));
 
         let peers = service.get_peers().unwrap();

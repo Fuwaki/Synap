@@ -77,6 +77,104 @@ impl SynapService {
         })
     }
 
+    pub(crate) fn rebuild_note_embeddings(&self) -> Result<(), ServiceError> {
+        let notes = self.with_read(|_tx, reader| {
+            let timeline = TimelineView::new(reader);
+            let mut notes = Vec::new();
+
+            for note_ref_res in timeline.recent_refs()? {
+                let note_ref = note_ref_res.map_err(ServiceError::from)?;
+                if !Self::is_latest_version(reader, note_ref)? || note_ref.is_deleted() {
+                    continue;
+                }
+
+                let note = note_ref
+                    .hydrate(reader)?
+                    .ok_or(ServiceError::NotFound(note_ref.get_id().to_string()))?;
+                notes.push((
+                    note.get_id().into_bytes(),
+                    Cow::Owned(note.get_search_text()),
+                ));
+            }
+
+            Ok(notes)
+        })?;
+
+        self.with_write(|tx| {
+            self.semantic_index.rebuild(tx, notes)?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn index_note_embedding(&self, note: &Note) -> Result<(), ServiceError> {
+        let note_id = note.get_id().into_bytes();
+        let content = note.get_search_text();
+        self.with_write(|tx| {
+            self.semantic_index.upsert(tx, &note_id, &content)?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn note_embedding(&self, note_id: Uuid) -> Result<Option<Vec<f32>>, ServiceError> {
+        self.with_read(|tx, _reader| {
+            Note::vector_index()
+                .get(tx, &note_id.into_bytes())
+                .map_err(Into::into)
+        })
+    }
+
+    pub(crate) fn ensure_starmap_model_ready(&self) -> Result<(), ServiceError> {
+        let snapshot = self.with_read(|tx, reader| {
+            let view = StarmapView::new(tx, reader);
+            if view.needs_initial_model()? {
+                return Ok(Some(view.build_full_snapshot()?));
+            }
+            Ok(None)
+        })?;
+
+        let Some(snapshot) = snapshot else {
+            return Ok(());
+        };
+
+        self.with_write(|wtx| StarmapView::persist_snapshot(wtx, &snapshot))
+    }
+
+    pub(crate) fn upsert_starmap_note(&self, note_id: Uuid) -> Result<(), ServiceError> {
+        let Some(vector) = self.note_embedding(note_id)? else {
+            return Ok(());
+        };
+
+        let snapshot = self.with_read(|tx, reader| {
+            let view = StarmapView::new(tx, reader);
+            view.upsert_note_from_model(note_id, vector)
+        })?;
+
+        self.with_write(|wtx| StarmapView::persist_snapshot(wtx, &snapshot))
+    }
+
+    pub(crate) fn remove_starmap_note(&self, note_id: Uuid) -> Result<(), ServiceError> {
+        let model = self.with_read(|tx, reader| {
+            let view = StarmapView::new(tx, reader);
+            view.remove_note_from_model(note_id)
+        })?;
+
+        self.with_write(|wtx| {
+            UmapCache::delete_point(wtx, &note_id.into_bytes())?;
+            if let Some(model) = model {
+                StarmapView::persist_model(wtx, &model)?;
+            } else {
+                UmapCache::clear_model(wtx)?;
+            }
+            Ok(())
+        })
+    }
+
+    pub(crate) fn rebuild_starmap_full_cache(&self) -> Result<(), ServiceError> {
+        let snapshot =
+            self.with_read(|tx, reader| StarmapView::new(tx, reader).build_full_snapshot())?;
+        self.with_write(|wtx| StarmapView::persist_snapshot(wtx, &snapshot))
+    }
+
     pub(crate) fn note_to_nlp_document(
         note: Note,
         reader: &NoteReader<'_>,
@@ -155,6 +253,7 @@ impl SynapService {
             .begin_write()
             .map_err(|err| ServiceError::Db(err.into()))?;
         Note::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
+        UmapCache::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
         TagWriter::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
         CryptoWriter::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
         SyncStatsWriter::init_schema(&tx).map_err(|err| ServiceError::Db(err.into()))?;
@@ -166,12 +265,15 @@ impl SynapService {
 
         let tag_searcher = FuzzyIndex::<Tag>::new();
         let note_searcher = FuzzyIndex::<Note>::new();
+        let semantic_index =
+            SemanticIndex::new(Note::vector_index(), Arc::new(LocalHashEmbedding::new(0)));
         let tag_recommender = ServiceTagRecommender::new();
 
         let res = Self {
             db,
             tag_searcher,
             note_searcher,
+            semantic_index,
             tag_recommender,
         };
         res.refresh_search_indexes()?;

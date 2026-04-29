@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,8 +22,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
@@ -51,6 +54,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -86,6 +90,7 @@ import com.synap.app.LocalNoteTextSize
 import com.synap.app.R
 import com.synap.app.ui.components.ShareExportSheet
 import com.synap.app.ui.model.Note
+import com.synap.app.ui.model.NoteVersion
 import com.synap.app.ui.util.formatNoteTime
 import com.synap.app.ui.viewmodel.DetailUiState
 import kotlinx.coroutines.launch
@@ -130,15 +135,36 @@ fun buildMarkdownAnnotatedString(
         }
 
         if (!isCompact) {
-            Regex("^(#{1,4} )(.*)", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
-                if (match.groups.size >= 3) {
-                    val level = match.groups[1]!!.value.trim().length
-                    val scale = 1.8f - (level * 0.15f)
-                    addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
-                    val lineEnd = visualString.indexOf('\n', match.range.last).takeIf { it != -1 } ?: visualString.length
-                    addStyle(SpanStyle(fontWeight = FontWeight.ExtraBold, fontSize = (baseFontSize * scale).sp, color = primaryColor), match.groups[2]!!.range.first, match.groups[2]!!.range.last + 1)
-                    addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.5f).sp), match.range.first, match.range.last + 1)
+            // ========== 核心逻辑：检测连续标题，并动态压缩连续标题的间距 ==========
+            val headingMatches = Regex("^(#{1,4} )(.*)", RegexOption.MULTILINE).findAll(visualString).toList()
+
+            for (i in headingMatches.indices) {
+                val match = headingMatches[i]
+                val level = match.groups[1]!!.value.trim().length
+                val scale = 1.8f - (level * 0.15f)
+                val headingFontSize = baseFontSize * scale
+
+                addStyle(hiddenSpanStyle, match.groups[1]!!.range.first, match.groups[1]!!.range.last + 1)
+                addStyle(SpanStyle(fontWeight = FontWeight.ExtraBold, fontSize = headingFontSize.sp, color = primaryColor), match.groups[2]!!.range.first, match.groups[2]!!.range.last + 1)
+
+                // 将 \n 包含在 ParagraphStyle 的范围内，防止它成为独立的 1.5 倍空行
+                val lineEnd = if (match.range.last + 1 < visualString.length && visualString[match.range.last + 1] == '\n') {
+                    match.range.last + 2
+                } else {
+                    match.range.last + 1
                 }
+
+                // 检测是否与下一个标题紧紧相连
+                val isNextConsecutive = if (i + 1 < headingMatches.size) {
+                    val nextMatch = headingMatches[i + 1]
+                    val gap = visualString.substring(match.range.last + 1, nextMatch.range.first)
+                    gap == "\n" || gap == "\r\n"
+                } else false
+
+                // 如果下一行也是标题，则当前行距压缩为极限的 1.0倍；如果是独立/末尾标题，则保持舒适的 1.2倍
+                val currentLineHeight = if (isNextConsecutive) headingFontSize * 1.0f else headingFontSize * 1.2f
+
+                addStyle(ParagraphStyle(lineHeight = currentLineHeight.sp), match.range.first, lineEnd)
             }
 
             val lines = visualString.split('\n')
@@ -157,19 +183,23 @@ fun buildMarkdownAnnotatedString(
                         addStyle(SpanStyle(color = Color.Gray, fontSize = (baseFontSize * 1.5f).sp, fontWeight = FontWeight.Black), offset, offset + 1)
                         addStyle(hiddenSpanStyle, offset + 1, offset + 2)
                     } else {
-                        addStyle(hiddenSpanStyle, offset, offset + 2)
+                        // ========== 多行引用对齐：使用透明占位符保证像素级对齐 ==========
+                        addStyle(SpanStyle(color = Color.Transparent, fontSize = (baseFontSize * 1.5f).sp, fontWeight = FontWeight.Black), offset, offset + 1)
+                        addStyle(hiddenSpanStyle, offset + 1, offset + 2)
                     }
                     addStyle(SpanStyle(color = Color.Gray), offset + 2, offset + lineLength)
                 } else {
                     if (inQuote) {
                         inQuote = false
-                        addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.5f).sp), quoteStart, offset)
+                        // ========== 引用块行距统一调整为 1.2 倍 ==========
+                        addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.2f).sp), quoteStart, offset)
                     }
                 }
                 offset += lineLength + 1
             }
             if (inQuote) {
-                addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.5f).sp), quoteStart, offset - 1)
+                // ========== 兜底：引用块行距统一调整为 1.2 倍 ==========
+                addStyle(ParagraphStyle(lineHeight = (baseFontSize * 1.2f).sp), quoteStart, offset - 1)
             }
 
             Regex("^•( )", RegexOption.MULTILINE).findAll(visualString).forEach { match ->
@@ -311,8 +341,8 @@ fun NoteDetailScreen(
             buildList {
                 uiState.note?.id?.let(::add)
                 addAll(uiState.origins.map { it.id })
-                addAll(uiState.previousVersions.map { it.id })
-                addAll(uiState.nextVersions.map { it.id })
+                addAll(uiState.previousVersions.map { it.note.id })
+                addAll(uiState.nextVersions.map { it.note.id })
                 addAll(uiState.replies.map { it.id })
             }.distinct()
         }
@@ -466,16 +496,19 @@ fun NoteDetailScreen(
                         buildMarkdownAnnotatedString(note.content, primaryColor, highlightColor, baseFontSize, isCompact = false)
                     }
 
-                    Text(
-                        text = annotatedContent,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontFamily = LocalNoteFontFamily.current,
-                            fontWeight = LocalNoteFontWeight.current,
-                            fontSize = LocalNoteTextSize.current,
-                            lineHeight = LocalNoteTextSize.current * LocalNoteLineSpacing.current
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    // ========== 允许自由选取文本 ==========
+                    SelectionContainer {
+                        Text(
+                            text = annotatedContent,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontFamily = LocalNoteFontFamily.current,
+                                fontWeight = LocalNoteFontWeight.current,
+                                fontSize = LocalNoteTextSize.current,
+                                lineHeight = LocalNoteTextSize.current * LocalNoteLineSpacing.current
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
 
                     if (uiState.errorMessage != null) {
                         Text(
@@ -490,14 +523,14 @@ fun NoteDetailScreen(
                         notes = uiState.origins,
                         onOpenRelatedNote = onOpenRelatedNote,
                     )
-                    RelationSection(
+                    VersionSection(
                         title = stringResource(R.string.notedetail_previousVersions),
-                        notes = uiState.previousVersions,
+                        versions = uiState.previousVersions,
                         onOpenRelatedNote = onOpenRelatedNote,
                     )
-                    RelationSection(
+                    VersionSection(
                         title = stringResource(R.string.notedetail_nextVersions),
-                        notes = uiState.nextVersions,
+                        versions = uiState.nextVersions,
                         onOpenRelatedNote = onOpenRelatedNote,
                     )
                     RelationSection(
@@ -686,6 +719,224 @@ private fun RelationSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun VersionSection(
+    title: String,
+    versions: List<NoteVersion>,
+    onOpenRelatedNote: (String) -> Unit,
+) {
+    if (versions.isEmpty()) {
+        return
+    }
+
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 24.dp, bottom = 12.dp),
+    )
+
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+    val baseFontSize = (LocalNoteTextSize.current.value - 2).coerceAtLeast(10f)
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        versions.forEach { version ->
+            VersionCard(
+                version = version,
+                primaryColor = primaryColor,
+                highlightColor = highlightColor,
+                baseFontSize = baseFontSize,
+                onOpenRelatedNote = onOpenRelatedNote,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VersionCard(
+    version: NoteVersion,
+    primaryColor: Color,
+    highlightColor: Color,
+    baseFontSize: Float,
+    onOpenRelatedNote: (String) -> Unit,
+) {
+    val note = version.note
+
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenRelatedNote(note.id) },
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            val annotatedContent = remember(note.content, primaryColor, highlightColor, baseFontSize) {
+                buildMarkdownAnnotatedString(
+                    note.content,
+                    primaryColor,
+                    highlightColor,
+                    baseFontSize,
+                    isCompact = true,
+                )
+            }
+
+            Text(
+                text = annotatedContent,
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontFamily = LocalNoteFontFamily.current,
+                    fontWeight = LocalNoteFontWeight.current,
+                    fontSize = baseFontSize.sp,
+                    lineHeight = baseFontSize.sp * LocalNoteLineSpacing.current,
+                ),
+            )
+
+            if (note.tags.isNotEmpty()) {
+                Text(
+                    text = note.tags.joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+
+            val hasTagDiff = version.addedTags.isNotEmpty() || version.removedTags.isNotEmpty()
+            val hasTextDiff =
+                version.diffStats.insertedChars > 0u || version.diffStats.deletedChars > 0u
+            if (hasTagDiff || hasTextDiff) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 10.dp),
+                ) {
+                    if (hasTagDiff) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        ) {
+                            version.addedTags.forEach { tag ->
+                                DiffTagChip(
+                                    text = "+#$tag",
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                            version.removedTags.forEach { tag ->
+                                DiffTagChip(
+                                    text = "-#$tag",
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            }
+                        }
+                    }
+
+                    if (hasTextDiff) {
+                        val diffMetrics = buildList {
+                            if (version.diffStats.insertedChars > 0u) {
+                                add(
+                                    Triple(
+                                        "+${version.diffStats.insertedChars}字符",
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        MaterialTheme.colorScheme.onPrimaryContainer,
+                                    ),
+                                )
+                            }
+                            if (version.diffStats.deletedChars > 0u) {
+                                add(
+                                    Triple(
+                                        "-${version.diffStats.deletedChars}字符",
+                                        MaterialTheme.colorScheme.errorContainer,
+                                        MaterialTheme.colorScheme.onErrorContainer,
+                                    ),
+                                )
+                            }
+                            if (version.diffStats.insertedLines > 0u) {
+                                add(
+                                    Triple(
+                                        "+${version.diffStats.insertedLines}行",
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f),
+                                        MaterialTheme.colorScheme.onPrimaryContainer,
+                                    ),
+                                )
+                            }
+                            if (version.diffStats.deletedLines > 0u) {
+                                add(
+                                    Triple(
+                                        "-${version.diffStats.deletedLines}行",
+                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.82f),
+                                        MaterialTheme.colorScheme.onErrorContainer,
+                                    ),
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        ) {
+                            diffMetrics.forEachIndexed { index, (text, containerColor, contentColor) ->
+                                if (index > 0) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                DiffMetricPill(
+                                    text = text,
+                                    containerColor = containerColor,
+                                    contentColor = contentColor,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiffTagChip(
+    text: String,
+    containerColor: Color,
+    contentColor: Color,
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = containerColor,
+    ) {
+        Text(
+            text = text,
+            color = contentColor,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun DiffMetricPill(
+    text: String,
+    containerColor: Color,
+    contentColor: Color,
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = containerColor,
+    ) {
+        Text(
+            text = text,
+            color = contentColor,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+        )
     }
 }
 

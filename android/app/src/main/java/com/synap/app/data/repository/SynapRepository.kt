@@ -2,7 +2,9 @@ package com.synap.app.data.repository
 
 import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.NoteRecord
+import com.synap.app.data.model.NoteVersionRecord
 import com.synap.app.data.model.ReplyItem
+import com.synap.app.data.model.SearchResultRecord
 import com.synap.app.data.model.ShareImportStats
 import com.synap.app.data.model.TimelineDirection
 import com.synap.app.data.model.TimelineSessionRecord
@@ -47,13 +49,20 @@ interface SynapRepository {
 
     suspend fun getOrigins(noteId: String): List<NoteRecord>
 
-    suspend fun getPreviousVersions(noteId: String): List<NoteRecord>
+    suspend fun getPreviousVersions(noteId: String): List<NoteVersionRecord>
 
-    suspend fun getNextVersions(noteId: String): List<NoteRecord>
+    suspend fun getNextVersions(noteId: String): List<NoteVersionRecord>
 
-    suspend fun getOtherVersions(noteId: String): List<NoteRecord>
+    suspend fun getOtherVersions(noteId: String): List<NoteVersionRecord>
 
     suspend fun search(query: String, limit: UInt = 50u): List<NoteRecord>
+
+    suspend fun searchFusion(
+        query: String,
+        limit: UInt = 50u,
+        fuzzyLimit: UInt? = null,
+        semanticLimit: UInt? = null,
+    ): List<SearchResultRecord>
 
     suspend fun searchTags(query: String, limit: UInt = 10u): List<String>
 
@@ -170,17 +179,25 @@ class SynapRepositoryImpl @Inject constructor(
     override suspend fun getOrigins(noteId: String): List<NoteRecord> =
         service.getOrigins(noteId).unwrap()
 
-    override suspend fun getPreviousVersions(noteId: String): List<NoteRecord> =
+    override suspend fun getPreviousVersions(noteId: String): List<NoteVersionRecord> =
         service.getPreviousVersions(noteId).unwrap()
 
-    override suspend fun getNextVersions(noteId: String): List<NoteRecord> =
+    override suspend fun getNextVersions(noteId: String): List<NoteVersionRecord> =
         service.getNextVersions(noteId).unwrap()
 
-    override suspend fun getOtherVersions(noteId: String): List<NoteRecord> =
+    override suspend fun getOtherVersions(noteId: String): List<NoteVersionRecord> =
         service.getOtherVersions(noteId).unwrap()
 
     override suspend fun search(query: String, limit: UInt): List<NoteRecord> =
         service.search(query, limit).unwrap()
+
+    override suspend fun searchFusion(
+        query: String,
+        limit: UInt,
+        fuzzyLimit: UInt?,
+        semanticLimit: UInt?,
+    ): List<SearchResultRecord> =
+        service.searchFusion(query, limit, fuzzyLimit, semanticLimit).unwrap()
 
     override suspend fun searchTags(query: String, limit: UInt): List<String> =
         service.searchTags(query, limit).unwrap()

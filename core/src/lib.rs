@@ -29,7 +29,9 @@ pub mod version;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use dto::{
-    LocalIdentityDTO, NoteDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, ShareStatsDTO,
+    LocalIdentityDTO, NoteContentDiffStatsDTO, NoteDTO, NoteTagDiffDTO, NoteTextChangeDTO,
+    NoteTextChangeKindDTO, NoteVersionDTO, NoteVersionDiffDTO, PeerDTO, PeerTrustStatusDTO,
+    PublicKeyInfoDTO, SearchResultDTO, SearchSourceDTO, ShareStatsDTO, StarmapPointDTO,
     SyncSessionDTO, SyncStatsDTO, SyncStatusDTO, TimelineNotesPageDTO, TimelineSessionDTO,
     TimelineSessionsPageDTO,
 };

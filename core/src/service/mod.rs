@@ -1,8 +1,9 @@
 use std::{
-    collections::HashSet,
+    borrow::Cow,
+    collections::{HashMap, HashSet},
     io::{Read, Write},
     path::Path,
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 mod convert;
@@ -10,6 +11,7 @@ mod note_command;
 mod note_query;
 mod peer;
 mod search;
+mod starmap;
 mod support;
 mod sync;
 #[cfg(test)]
@@ -17,9 +19,11 @@ mod tests;
 
 use crate::{
     crypto,
+    db::umap::UmapCache,
     dto::{
-        LocalIdentityDTO, NoteDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, ShareStatsDTO,
-        SyncSessionDTO, SyncSessionRecordDTO, SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO,
+        LocalIdentityDTO, NoteDTO, NoteVersionDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO,
+        SearchResultDTO, SearchSourceDTO, ShareStatsDTO, StarmapPointDTO, SyncSessionDTO,
+        SyncSessionRecordDTO, SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO,
         TimelineNotesPageDTO, TimelineSessionDTO, TimelineSessionsPageDTO,
     },
     error::ServiceError,
@@ -31,11 +35,13 @@ use crate::{
         },
         tag::{Tag, TagReader, TagWriter},
     },
-    nlp::{NlpDocument, NlpTagIndex},
-    search::searcher::FuzzyIndex,
+    nlp::{embedding::LocalHashEmbedding, NlpDocument, NlpTagIndex},
+    search::{searcher::FuzzyIndex, semantic::SemanticIndex, types::Searchable},
     sync::{ShareService, SyncPeerIdentity, SyncService},
     views::{
+        note_version_view::NoteVersionView,
         note_view::NoteView,
+        starmap::StarmapView,
         timeline_view::{SessionDetectionConfig, SessionSpan, TimelinePoint, TimelineView},
     },
 };
@@ -70,6 +76,7 @@ pub struct SynapService {
     tag_searcher: FuzzyIndex<Tag>,
     #[allow(dead_code)]
     note_searcher: FuzzyIndex<Note>,
+    semantic_index: SemanticIndex,
     tag_recommender: ServiceTagRecommender,
 }
 

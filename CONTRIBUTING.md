@@ -49,7 +49,7 @@ chore(xtask): 改进发布脚本输出
 - `cli/output`
 - `web/auth`
 - `web/player`
-- `desktop/window`
+- `desktop_linux/window`
 - `core/search`
 - `core/audio`
 - `coreffi/bindings`
@@ -102,6 +102,7 @@ docs(web): 补充部署环境变量说明
 - Android：`android-vX.Y.Z`
 - CLI：`cli-vX.Y.Z`
 - Web：`web-vX.Y.Z`
+- Desktop Linux：`desktop-linux-vX.Y.Z`
 
 示例：
 
@@ -109,6 +110,7 @@ docs(web): 补充部署环境变量说明
 android-v1.0.0
 cli-v1.2.3
 web-v0.9.0
+desktop-linux-v0.3.0
 ```
 
 如果是预发布版本，也请直接体现在版本号中。推荐遵循语义化版本的预发布标记写法，例如：
@@ -119,6 +121,7 @@ android-v1.0.0-beta.1
 android-v1.0.0-rc.1
 cli-v2.3.0-beta.2
 web-v0.9.0-rc.1
+desktop-linux-v0.3.0-rc.1
 ```
 
 版本阶段约定如下：
@@ -137,10 +140,13 @@ web-v0.9.0-rc.1
 对应关系如下：
 
 - `android-v1.0.0` 触发 Android 发布流程
+- `desktop-linux-v1.0.0` 触发 Desktop Linux 发布流程
 - `cli-v1.0.0` 触发 CLI 发布流程
 - `web-v1.0.0` 触发 Web 发布流程
 
 普通提交推送到 `master` 时，仍然会触发常规构建流程，不受上述发布 tag 规则影响。
+
+当前桌面端的 GitHub Actions workflow 为 `.github/workflows/desktop_linux.yml`，仅负责 Linux 桌面版本的构建与发布。Windows 和 macOS 目前不在默认发布范围内；如果后续需要支持，应单独评估对应平台的依赖、打包和分发方案。
 
 ## 建议工作流
 

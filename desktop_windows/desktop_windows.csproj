@@ -11,6 +11,35 @@
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RepoRoot>$(MSBuildThisFileDirectory)..\</RepoRoot>
+    <GeneratedUniFFIDir>$(BaseIntermediateOutputPath)Generated\UniFFI\</GeneratedUniFFIDir>
+    <CoreffiUdl>$(RepoRoot)coreffi\src\synap.udl</CoreffiUdl>
+    <CoreffiConfig>$(RepoRoot)coreffi\uniffi.toml</CoreffiConfig>
+    <RustDllName>uniffi_synap_coreffi.dll</RustDllName>
+    <RustDllPath>$(RepoRoot)target\$(RustTargetTriple)\$(RustProfile)\$(RustDllName)</RustDllPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RustProfile>release</RustProfile>
+    <RustCargoProfileArg>--release</RustCargoProfileArg>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' != 'Release'">
+    <RustProfile>debug</RustProfile>
+    <RustCargoProfileArg></RustCargoProfileArg>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Platform)' == 'x86'">
+    <RustTargetTriple>i686-pc-windows-msvc</RustTargetTriple>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Platform)' == 'x64'">
+    <RustTargetTriple>x86_64-pc-windows-msvc</RustTargetTriple>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Platform)' == 'ARM64'">
+    <RustTargetTriple>aarch64-pc-windows-msvc</RustTargetTriple>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +54,10 @@
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="$(GeneratedUniFFIDir)*.cs" Visible="false" />
   </ItemGroup>
 
   <!--
@@ -56,4 +89,26 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
+
+  <Target Name="ValidateRustWindowsPlatform" BeforeTargets="BeforeCompile">
+    <Error Condition="'$(RustTargetTriple)' == ''" Text="Unsupported Platform '$(Platform)' for Rust coreffi build." />
+  </Target>
+
+  <Target Name="GenerateCoreffiCSharpBindings" BeforeTargets="BeforeCompile" DependsOnTargets="ValidateRustWindowsPlatform">
+    <MakeDir Directories="$(GeneratedUniFFIDir)" />
+    <Exec
+      WorkingDirectory="$(RepoRoot)"
+      Command="cargo run -p xtask -- gen-uniffi-csharp --udl &quot;$(CoreffiUdl)&quot; --config &quot;$(CoreffiConfig)&quot; --out-dir &quot;$(GeneratedUniFFIDir)&quot;" />
+  </Target>
+
+  <Target Name="BuildCoreffiRust" BeforeTargets="BeforeCompile" DependsOnTargets="GenerateCoreffiCSharpBindings">
+    <Exec
+      WorkingDirectory="$(RepoRoot)"
+      Command="cargo build -p synap-coreffi --target $(RustTargetTriple) $(RustCargoProfileArg)" />
+  </Target>
+
+  <Target Name="CopyCoreffiRustDll" AfterTargets="Build" DependsOnTargets="BuildCoreffiRust">
+    <MakeDir Directories="$(OutDir)" />
+    <Copy SourceFiles="$(RustDllPath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

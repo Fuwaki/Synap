@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="desktop_windows.TrashPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:desktop_windows"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <ScrollViewer>
+        <ItemsRepeater x:Name="NotesRepeater" Margin="36,0,36,24">
+            <ItemsRepeater.Layout>
+                <UniformGridLayout 
+                    MinItemWidth="200" 
+                    MinItemHeight="100" 
+                    MinColumnSpacing="12" 
+                    MinRowSpacing="12"
+                    ItemsStretch="Fill"
+                    Orientation="Horizontal" />
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+                <DataTemplate x:DataType="local:NoteItem">
+                    <local:NoteCard 
+                        NoteContent="{x:Bind NoteContent}" 
+                        TimeAgo="{x:Bind TimeAgo}" />
+                </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+    </ScrollViewer>
+</Page>

@@ -13,11 +13,10 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RepoRoot>$(MSBuildThisFileDirectory)..\</RepoRoot>
-    <GeneratedUniFFIDir>$(BaseIntermediateOutputPath)Generated\UniFFI\</GeneratedUniFFIDir>
+    <GeneratedUniFFIDir>$(BaseIntermediateOutputPath)Generated\UniFFI</GeneratedUniFFIDir>
     <CoreffiUdl>$(RepoRoot)coreffi\src\synap.udl</CoreffiUdl>
     <CoreffiConfig>$(RepoRoot)coreffi\uniffi.toml</CoreffiConfig>
     <RustDllName>uniffi_synap_coreffi.dll</RustDllName>
-    <RustDllPath>$(RepoRoot)target\$(RustTargetTriple)\$(RustProfile)\$(RustDllName)</RustDllPath>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -42,6 +41,10 @@
     <RustTargetTriple>aarch64-pc-windows-msvc</RustTargetTriple>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <RustDllPath>$(RepoRoot)target\$(RustTargetTriple)\$(RustProfile)\$(RustDllName)</RustDllPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
@@ -57,7 +60,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="$(GeneratedUniFFIDir)*.cs" Visible="false" />
+    <Compile Include="$(GeneratedUniFFIDir)\*.cs" Visible="false" />
   </ItemGroup>
 
   <!--

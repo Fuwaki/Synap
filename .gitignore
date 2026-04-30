@@ -35,6 +35,12 @@ android/*.iml
 android/.cxx/
 android/.idea/
 
+# Windows & Winui3
+
+desktop_windows/bin/
+desktop_windows/obj/
+desktop_windows/.vs/
+
 # CoreFFI 历史产物
 coreffi/android/app/src/main/jniLibs/
 coreffi/android/app/src/main/java/com/fuwaki/synap/bindings/uniffi/

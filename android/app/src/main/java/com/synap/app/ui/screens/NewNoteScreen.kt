@@ -251,7 +251,11 @@ fun NewNoteScreen(
             },
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(if (uiState.mode is EditorMode.Create) R.string.edit_title_creat else R.string.edit_title_edit)) },
+                title = { Text(stringResource(when (uiState.mode) {
+                    is EditorMode.Create -> R.string.edit_title_creat
+                    is EditorMode.Reply -> R.string.edit_title_reply
+                    is EditorMode.Edit -> R.string.edit_title_edit
+                })) },
                 navigationIcon = { IconButton(onClick = { hideKeyboardAndNavigate { onNavigateBack() } }) { Icon(Icons.Filled.ArrowBack, "返回") } },
                 actions = {
                     IconButton(onClick = { hideKeyboardAndNavigate { onSave() } }, enabled = !uiState.isSaving && !uiState.isLoading) {

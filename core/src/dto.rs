@@ -107,6 +107,37 @@ pub struct TimelineSessionsPageDTO {
     pub next_cursor: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum NoteSegmentDirectionDTO {
+    Forward,
+    Backward,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteSegmentBranchChoiceDTO {
+    pub note: NoteDTO,
+    pub weight: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteSegmentStepDTO {
+    pub note: NoteDTO,
+    pub next_choices: Vec<NoteSegmentBranchChoiceDTO>,
+    pub prev_choices: Vec<NoteSegmentBranchChoiceDTO>,
+    pub stops_here: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteSegmentDTO {
+    pub anchor_id: String,
+    pub direction: NoteSegmentDirectionDTO,
+    pub steps: Vec<NoteSegmentStepDTO>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct StarmapPointDTO {

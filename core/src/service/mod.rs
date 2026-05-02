@@ -21,10 +21,11 @@ use crate::{
     crypto,
     db::umap::UmapCache,
     dto::{
-        LocalIdentityDTO, NoteDTO, NoteVersionDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO,
-        SearchResultDTO, SearchSourceDTO, ShareStatsDTO, StarmapPointDTO, SyncSessionDTO,
-        SyncSessionRecordDTO, SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO,
-        TimelineNotesPageDTO, TimelineSessionDTO, TimelineSessionsPageDTO,
+        LocalIdentityDTO, NoteDTO, NoteSegmentDTO, NoteSegmentDirectionDTO, NoteVersionDTO,
+        PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, SearchResultDTO, SearchSourceDTO,
+        ShareStatsDTO, StarmapPointDTO, SyncSessionDTO, SyncSessionRecordDTO,
+        SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO, TimelineNotesPageDTO,
+        TimelineSessionDTO, TimelineSessionsPageDTO,
     },
     error::ServiceError,
     models::{
@@ -39,6 +40,7 @@ use crate::{
     search::{searcher::FuzzyIndex, semantic::SemanticIndex, types::Searchable},
     sync::{ShareService, SyncPeerIdentity, SyncService},
     views::{
+        note_segment_view::{NoteSegmentDirection, NoteSegmentView},
         note_version_view::NoteVersionView,
         note_view::NoteView,
         starmap::StarmapView,

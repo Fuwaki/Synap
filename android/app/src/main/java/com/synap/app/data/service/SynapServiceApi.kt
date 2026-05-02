@@ -3,6 +3,8 @@ package com.synap.app.data.service
 import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.LocalIdentity
 import com.synap.app.data.model.NoteRecord
+import com.synap.app.data.model.NoteSegmentDirection
+import com.synap.app.data.model.NoteSegmentRecord
 import com.synap.app.data.model.NoteVersionRecord
 import com.synap.app.data.model.PeerRecord
 import com.synap.app.data.model.PeerTrustStatus
@@ -70,6 +72,11 @@ interface SynapServiceApi {
     ): Result<CursorPage<TimelineSessionRecord>>
 
     suspend fun getOrigins(childId: String): Result<List<NoteRecord>>
+
+    suspend fun getNoteSegment(
+        anchorId: String,
+        direction: NoteSegmentDirection,
+    ): Result<NoteSegmentRecord>
 
     suspend fun getPreviousVersions(noteId: String): Result<List<NoteVersionRecord>>
 

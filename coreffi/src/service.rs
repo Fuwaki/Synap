@@ -8,10 +8,14 @@ use std::{
 use crate::error::FfiError;
 use crate::types::{
     BuildInfo, FilteredNoteStatus, LocalIdentityDTO, NoteDTO, NoteVersionDTO, PeerDTO,
-    SearchResultDTO, ShareStatsDTO, StarmapPointDTO, SyncSessionDTO, SyncSessionRecordDTO,
-    TimelineDirection, TimelineNotesPageDTO, TimelineSessionsPageDTO,
+    NoteSegmentDTO, NoteSegmentDirectionDTO, SearchResultDTO, ShareStatsDTO, StarmapPointDTO,
+    SyncSessionDTO, SyncSessionRecordDTO, TimelineDirection, TimelineNotesPageDTO,
+    TimelineSessionsPageDTO,
 };
-use synap_core::dto::{NoteDTO as CoreNoteDTO, NoteVersionDTO as CoreNoteVersionDTO};
+use synap_core::dto::{
+    NoteDTO as CoreNoteDTO, NoteSegmentDTO as CoreNoteSegmentDTO,
+    NoteSegmentDirectionDTO as CoreNoteSegmentDirectionDTO, NoteVersionDTO as CoreNoteVersionDTO,
+};
 use synap_core::service::SynapService as CoreSynapService;
 
 struct ForeignSyncTransport {
@@ -79,6 +83,10 @@ impl SynapService {
 
     fn map_note_versions(versions: Vec<CoreNoteVersionDTO>) -> Vec<NoteVersionDTO> {
         versions.into_iter().map(Into::into).collect()
+    }
+
+    fn map_note_segment(segment: CoreNoteSegmentDTO) -> NoteSegmentDTO {
+        segment.into()
     }
 
     fn map_search_results(results: Vec<synap_core::dto::SearchResultDTO>) -> Vec<SearchResultDTO> {
@@ -184,6 +192,23 @@ impl SynapService {
         self.inner
             .get_origins(&child_id)
             .map(Self::map_notes)
+            .map_err(Into::into)
+    }
+
+    pub fn get_note_segment(
+        &self,
+        anchor_id: String,
+        direction: NoteSegmentDirectionDTO,
+    ) -> Result<NoteSegmentDTO, FfiError> {
+        self.inner
+            .get_note_segment(
+                &anchor_id,
+                match direction {
+                    NoteSegmentDirectionDTO::Forward => CoreNoteSegmentDirectionDTO::Forward,
+                    NoteSegmentDirectionDTO::Backward => CoreNoteSegmentDirectionDTO::Backward,
+                },
+            )
+            .map(Self::map_note_segment)
             .map_err(Into::into)
     }
 

@@ -24,6 +24,11 @@ enum TimelineDirection {
     "Newer",
 };
 
+enum NoteSegmentDirectionDTO {
+    "Forward",
+    "Backward",
+};
+
 enum PeerTrustStatusDTO {
     "Pending",
     "Trusted",
@@ -45,6 +50,39 @@ dictionary NoteDTO {
     boolean deleted;
     NoteBriefDTO? reply_to;
     NoteBriefDTO? edited_from;
+};
+
+dictionary NoteSegmentBranchChoiceDTO {
+    NoteDTO note;
+    u32 weight;
+};
+
+dictionary NoteNeighborContextDTO {
+    NoteDTO note;
+    u32 weight;
+    sequence<NoteSegmentBranchChoiceDTO> parents;
+    sequence<NoteSegmentBranchChoiceDTO> children;
+};
+
+dictionary NoteNeighborsDTO {
+    NoteDTO note;
+    sequence<NoteSegmentBranchChoiceDTO> parents;
+    sequence<NoteSegmentBranchChoiceDTO> children;
+    sequence<NoteNeighborContextDTO> parent_contexts;
+    sequence<NoteNeighborContextDTO> child_contexts;
+};
+
+dictionary NoteSegmentStepDTO {
+    NoteDTO note;
+    sequence<NoteSegmentBranchChoiceDTO> next_choices;
+    sequence<NoteSegmentBranchChoiceDTO> prev_choices;
+    boolean stops_here;
+};
+
+dictionary NoteSegmentDTO {
+    string anchor_id;
+    NoteSegmentDirectionDTO direction;
+    sequence<NoteSegmentStepDTO> steps;
 };
 
 enum NoteTextChangeKindDTO {
@@ -224,6 +262,11 @@ interface SynapService {
         u32? limit
     );
     [Throws=FfiError] sequence<NoteDTO> get_origins(string child_id);
+    [Throws=FfiError] NoteSegmentDTO get_note_segment(
+        string anchor_id,
+        NoteSegmentDirectionDTO direction
+    );
+    [Throws=FfiError] NoteNeighborsDTO get_note_neighbors(string note_id);
     [Throws=FfiError] sequence<NoteVersionDTO> get_previous_versions(string note_id);
     [Throws=FfiError] sequence<NoteVersionDTO> get_next_versions(string note_id);
     [Throws=FfiError] sequence<NoteVersionDTO> get_other_versions(string note_id);

@@ -27,6 +27,7 @@ import com.synap.app.ui.screens.*
 import com.synap.app.ui.viewmodel.*
 
 fun detailRoute(noteId: String): String = "detail/${Uri.encode(noteId)}"
+fun threadReaderRoute(noteId: String): String = "thread/${Uri.encode(noteId)}"
 
 // ========== 新增 initialContent 参数 ==========
 fun editorRoute(parentId: String? = null, parentSummary: String? = null, editNoteId: String? = null, initialContent: String? = null): String {
@@ -185,9 +186,35 @@ fun SynapNavGraph(
                         onReply = { uiState.note?.let { note -> navController.navigate(editorRoute(parentId = note.id, parentSummary = note.content)) } },
                         onEdit = { uiState.note?.let { note -> navController.navigate(editorRoute(editNoteId = note.id)) } },
                         onOpenRelatedNote = { noteId -> navController.navigate(detailRoute(noteId)) },
+                        onOpenThreadReader = { noteId -> navController.navigate(threadReaderRoute(noteId)) },
                         onLoadMoreReplies = viewModel::loadMoreReplies,
                         onRefresh = viewModel::refreshAll,
                         onExportShare = viewModel::exportShare,
+                    )
+                }
+
+                composable(
+                    route = "thread/{noteId}",
+                    arguments = listOf(
+                        navArgument("noteId") { type = NavType.StringType },
+                    ),
+                ) {
+                    val viewModel: ThreadReaderViewModel = hiltViewModel()
+                    val uiState by viewModel.uiState.collectAsState()
+
+                    ThreadReaderScreen(
+                        uiState = uiState,
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenOriginDetail = { noteId -> navController.navigate(detailRoute(noteId)) },
+                        onOpenBranch = viewModel::selectBranch,
+                        onOpenNodeAsAnchor = viewModel::openNodeAsAnchor,
+                        onShowBranchSheet = viewModel::openBranchSheet,
+                        onDismissBranchSheet = viewModel::dismissBranchSheet,
+                        onBacktrack = viewModel::goBackInHistory,
+                        onRefresh = viewModel::refresh,
+                        onOpenGraph = viewModel::openGraphSheet,
+                        onDismissGraph = viewModel::dismissGraphSheet,
+                        onFocusNode = viewModel::focusNode,
                     )
                 }
 

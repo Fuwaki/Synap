@@ -3,16 +3,19 @@
 use synap_core::dto::{
     LocalIdentityDTO as CoreLocalIdentityDto, NoteBriefDTO as CoreNoteBriefDto,
     NoteContentDiffStatsDTO as CoreNoteContentDiffStatsDto, NoteDTO as CoreNoteDto,
-    NoteTagDiffDTO as CoreNoteTagDiffDto, NoteTextChangeDTO as CoreNoteTextChangeDto,
-    NoteTextChangeKindDTO as CoreNoteTextChangeKindDto, NoteVersionDTO as CoreNoteVersionDto,
-    NoteVersionDiffDTO as CoreNoteVersionDiffDto, PeerDTO as CorePeerDto,
-    PeerTrustStatusDTO as CorePeerTrustStatusDto, PublicKeyInfoDTO as CorePublicKeyInfoDto,
-    SearchResultDTO as CoreSearchResultDto, SearchSourceDTO as CoreSearchSourceDto,
-    ShareStatsDTO as CoreShareStatsDto, StarmapPointDTO as CoreStarmapPointDto,
-    SyncSessionDTO as CoreSyncSessionDto, SyncSessionRecordDTO as CoreSyncSessionRecordDto,
-    SyncSessionRoleDTO as CoreSyncSessionRoleDto, SyncStatsDTO as CoreSyncStatsDto,
-    SyncStatusDTO as CoreSyncStatusDto, TimelineNotesPageDTO as CoreTimelineNotesPageDto,
-    TimelineSessionDTO as CoreTimelineSessionDto,
+    NoteNeighborContextDTO as CoreNoteNeighborContextDto, NoteNeighborsDTO as CoreNoteNeighborsDto,
+    NoteSegmentBranchChoiceDTO as CoreNoteSegmentBranchChoiceDto,
+    NoteSegmentDTO as CoreNoteSegmentDto, NoteSegmentDirectionDTO as CoreNoteSegmentDirectionDto,
+    NoteSegmentStepDTO as CoreNoteSegmentStepDto, NoteTagDiffDTO as CoreNoteTagDiffDto,
+    NoteTextChangeDTO as CoreNoteTextChangeDto, NoteTextChangeKindDTO as CoreNoteTextChangeKindDto,
+    NoteVersionDTO as CoreNoteVersionDto, NoteVersionDiffDTO as CoreNoteVersionDiffDto,
+    PeerDTO as CorePeerDto, PeerTrustStatusDTO as CorePeerTrustStatusDto,
+    PublicKeyInfoDTO as CorePublicKeyInfoDto, SearchResultDTO as CoreSearchResultDto,
+    SearchSourceDTO as CoreSearchSourceDto, ShareStatsDTO as CoreShareStatsDto,
+    StarmapPointDTO as CoreStarmapPointDto, SyncSessionDTO as CoreSyncSessionDto,
+    SyncSessionRecordDTO as CoreSyncSessionRecordDto, SyncSessionRoleDTO as CoreSyncSessionRoleDto,
+    SyncStatsDTO as CoreSyncStatsDto, SyncStatusDTO as CoreSyncStatusDto,
+    TimelineNotesPageDTO as CoreTimelineNotesPageDto, TimelineSessionDTO as CoreTimelineSessionDto,
     TimelineSessionsPageDTO as CoreTimelineSessionsPageDto,
 };
 use synap_core::service::FilteredNoteStatus as CoreFilteredNoteStatus;
@@ -58,6 +61,129 @@ impl From<CoreNoteDto> for NoteDTO {
             deleted: note.deleted,
             reply_to: note.reply_to.map(Into::into),
             edited_from: note.edited_from.map(Into::into),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteSegmentDirectionDTO {
+    Forward,
+    Backward,
+}
+
+impl From<CoreNoteSegmentDirectionDto> for NoteSegmentDirectionDTO {
+    fn from(direction: CoreNoteSegmentDirectionDto) -> Self {
+        match direction {
+            CoreNoteSegmentDirectionDto::Forward => Self::Forward,
+            CoreNoteSegmentDirectionDto::Backward => Self::Backward,
+        }
+    }
+}
+
+impl From<NoteSegmentDirectionDTO> for CoreNoteSegmentDirectionDto {
+    fn from(direction: NoteSegmentDirectionDTO) -> Self {
+        match direction {
+            NoteSegmentDirectionDTO::Forward => Self::Forward,
+            NoteSegmentDirectionDTO::Backward => Self::Backward,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteSegmentBranchChoiceDTO {
+    pub note: NoteDTO,
+    pub weight: u32,
+}
+
+impl From<CoreNoteSegmentBranchChoiceDto> for NoteSegmentBranchChoiceDTO {
+    fn from(choice: CoreNoteSegmentBranchChoiceDto) -> Self {
+        Self {
+            note: choice.note.into(),
+            weight: choice.weight,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteNeighborContextDTO {
+    pub note: NoteDTO,
+    pub weight: u32,
+    pub parents: Vec<NoteSegmentBranchChoiceDTO>,
+    pub children: Vec<NoteSegmentBranchChoiceDTO>,
+}
+
+impl From<CoreNoteNeighborContextDto> for NoteNeighborContextDTO {
+    fn from(context: CoreNoteNeighborContextDto) -> Self {
+        Self {
+            note: context.note.into(),
+            weight: context.weight,
+            parents: context.parents.into_iter().map(Into::into).collect(),
+            children: context.children.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteNeighborsDTO {
+    pub note: NoteDTO,
+    pub parents: Vec<NoteSegmentBranchChoiceDTO>,
+    pub children: Vec<NoteSegmentBranchChoiceDTO>,
+    pub parent_contexts: Vec<NoteNeighborContextDTO>,
+    pub child_contexts: Vec<NoteNeighborContextDTO>,
+}
+
+impl From<CoreNoteNeighborsDto> for NoteNeighborsDTO {
+    fn from(neighbors: CoreNoteNeighborsDto) -> Self {
+        Self {
+            note: neighbors.note.into(),
+            parents: neighbors.parents.into_iter().map(Into::into).collect(),
+            children: neighbors.children.into_iter().map(Into::into).collect(),
+            parent_contexts: neighbors
+                .parent_contexts
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            child_contexts: neighbors
+                .child_contexts
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteSegmentStepDTO {
+    pub note: NoteDTO,
+    pub next_choices: Vec<NoteSegmentBranchChoiceDTO>,
+    pub prev_choices: Vec<NoteSegmentBranchChoiceDTO>,
+    pub stops_here: bool,
+}
+
+impl From<CoreNoteSegmentStepDto> for NoteSegmentStepDTO {
+    fn from(step: CoreNoteSegmentStepDto) -> Self {
+        Self {
+            note: step.note.into(),
+            next_choices: step.next_choices.into_iter().map(Into::into).collect(),
+            prev_choices: step.prev_choices.into_iter().map(Into::into).collect(),
+            stops_here: step.stops_here,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteSegmentDTO {
+    pub anchor_id: String,
+    pub direction: NoteSegmentDirectionDTO,
+    pub steps: Vec<NoteSegmentStepDTO>,
+}
+
+impl From<CoreNoteSegmentDto> for NoteSegmentDTO {
+    fn from(segment: CoreNoteSegmentDto) -> Self {
+        Self {
+            anchor_id: segment.anchor_id,
+            direction: segment.direction.into(),
+            steps: segment.steps.into_iter().map(Into::into).collect(),
         }
     }
 }

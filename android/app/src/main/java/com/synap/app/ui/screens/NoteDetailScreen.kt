@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LinearScale
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignTop
@@ -254,6 +255,7 @@ fun NoteDetailScreen(
     onReply: () -> Unit,
     onEdit: () -> Unit,
     onOpenRelatedNote: (String) -> Unit,
+    onOpenThreadReader: (String) -> Unit,
     onLoadMoreReplies: () -> Unit,
     onRefresh: () -> Unit,
     onExportShare: suspend (List<String>) -> ByteArray,

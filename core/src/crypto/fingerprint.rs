@@ -296,9 +296,13 @@ impl RasterImage {
 
     fn draw_circle_soft(&mut self, center: Point, radius: f32, color: Rgba, opacity: f32) {
         let min_x = (center.x - radius - 1.0).floor().max(0.0) as usize;
-        let max_x = (center.x + radius + 1.0).ceil().min((self.width - 1) as f32) as usize;
+        let max_x = (center.x + radius + 1.0)
+            .ceil()
+            .min((self.width - 1) as f32) as usize;
         let min_y = (center.y - radius - 1.0).floor().max(0.0) as usize;
-        let max_y = (center.y + radius + 1.0).ceil().min((self.height - 1) as f32) as usize;
+        let max_y = (center.y + radius + 1.0)
+            .ceil()
+            .min((self.height - 1) as f32) as usize;
 
         for y in min_y..=max_y {
             for x in min_x..=max_x {
@@ -315,7 +319,9 @@ impl RasterImage {
         let min_x = (center.x - half_extent).floor().max(0.0) as usize;
         let max_x = (center.x + half_extent).ceil().min((self.width - 1) as f32) as usize;
         let min_y = (center.y - half_extent).floor().max(0.0) as usize;
-        let max_y = (center.y + half_extent).ceil().min((self.height - 1) as f32) as usize;
+        let max_y = (center.y + half_extent)
+            .ceil()
+            .min((self.height - 1) as f32) as usize;
 
         for y in min_y..=max_y {
             for x in min_x..=max_x {
@@ -502,7 +508,9 @@ fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
 }
 
 fn blend_channel(dst: f32, src: f32, alpha: f32) -> u8 {
-    (src * alpha + dst * (1.0 - alpha)).round().clamp(0.0, 255.0) as u8
+    (src * alpha + dst * (1.0 - alpha))
+        .round()
+        .clamp(0.0, 255.0) as u8
 }
 
 fn encode_png_rgba8(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
@@ -616,7 +624,10 @@ mod tests {
         let png = generate_public_key_avatar_png(&public_key);
 
         assert!(png.starts_with(&[137, 80, 78, 71, 13, 10, 26, 10]));
-        assert_eq!(Sha256::digest(&png[..]).as_slice(), &hex_to_bytes32("6e3eed4ab3d7bd686e976c5f59a5d95862fcb70846c38c278e9a2bd7bf9f0f10"));
+        assert_eq!(
+            Sha256::digest(&png[..]).as_slice(),
+            &hex_to_bytes32("6e3eed4ab3d7bd686e976c5f59a5d95862fcb70846c38c278e9a2bd7bf9f0f10")
+        );
     }
 
     #[test]

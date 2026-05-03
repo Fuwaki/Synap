@@ -54,8 +54,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.synap.app.R
+import com.synap.app.data.service.AIModelPresetStore
 import com.synap.app.data.service.AIModelRecord
 import com.synap.app.data.service.AIModelStore
+import com.synap.app.data.service.PresetModelProvider
 import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,8 +66,9 @@ fun SettingAIapiScreen(
     onNavigateBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val store = remember { AIModelStore(context) }
-    var importedModels by remember { mutableStateOf(store.list()) }
+    val store = remember { runCatching { AIModelStore(context) }.getOrNull() }
+    val presetProviders = remember { runCatching { AIModelPresetStore.load(context) }.getOrDefault(emptyList()) }
+    var importedModels by remember { mutableStateOf(store?.list().orEmpty()) }
 
     // ========== 增加AI提供商弹窗状态 ==========
     var showAddProviderDialog by remember { mutableStateOf(false) }
@@ -79,10 +82,11 @@ fun SettingAIapiScreen(
 
     // ========== 预设模型弹窗状态 ==========
     var showPresetDialog by remember { mutableStateOf(false) }
+    var currentPreset by remember { mutableStateOf<PresetModelProvider?>(null) }
     var presetApiKey by remember { mutableStateOf("") }
-    var presetModelId by remember { mutableStateOf("") }
-    var presetModelName by remember { mutableStateOf("") }
-    var currentPreset by remember { mutableStateOf<PresetModel?>(null) }
+    var presetSelectedModelIndex by remember { mutableStateOf(-1) }
+    var presetCustomModelId by remember { mutableStateOf("") }
+    var presetCustomModelName by remember { mutableStateOf("") }
 
     // ========== 编辑模型弹窗状态 ==========
     var showEditDialog by remember { mutableStateOf(false) }
@@ -120,8 +124,9 @@ fun SettingAIapiScreen(
 
     fun resetPresetState() {
         presetApiKey = ""
-        presetModelId = ""
-        presetModelName = ""
+        presetSelectedModelIndex = -1
+        presetCustomModelId = ""
+        presetCustomModelName = ""
         currentPreset = null
     }
 
@@ -178,6 +183,7 @@ fun SettingAIapiScreen(
                         value = baseUrl,
                         onValueChange = { baseUrl = it },
                         label = { Text(stringResource(R.string.ai_base_url)) },
+                        supportingText = { Text(stringResource(R.string.ai_base_url_hint)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
@@ -236,7 +242,7 @@ fun SettingAIapiScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        store.add(
+                        store?.add(
                             AIModelRecord(
                                 providerId = providerId,
                                 serviceName = serviceName.ifBlank { providerId },
@@ -247,7 +253,7 @@ fun SettingAIapiScreen(
                                 modelType = modelType,
                             )
                         )
-                        importedModels = store.list()
+                        importedModels = store?.list().orEmpty()
                         showAddProviderDialog = false
                         resetAddProviderState()
                     },
@@ -270,9 +276,17 @@ fun SettingAIapiScreen(
     // ========== 预设模型弹窗 ==========
     if (showPresetDialog && currentPreset != null) {
         val preset = currentPreset!!
+        val hasModels = preset.models.isNotEmpty()
+        val isCustom = presetSelectedModelIndex == preset.models.size
+        val canSave = if (hasModels) {
+            if (isCustom) presetCustomModelId.isNotBlank() else presetSelectedModelIndex >= 0
+        } else {
+            presetCustomModelId.isNotBlank()
+        }
+
         AlertDialog(
             onDismissRequest = { showPresetDialog = false },
-            title = { Text(preset.displayName) },
+            title = { Text(preset.name) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
@@ -283,44 +297,126 @@ fun SettingAIapiScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
-                    OutlinedTextField(
-                        value = presetModelId,
-                        onValueChange = { presetModelId = it },
-                        label = { Text(stringResource(R.string.ai_model_id)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = presetModelName,
-                        onValueChange = { presetModelName = it },
-                        label = { Text(stringResource(R.string.ai_model_remark)) },
-                        supportingText = { Text(stringResource(R.string.ai_model_name_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
+                    if (hasModels) {
+                        Text(
+                            text = stringResource(R.string.ai_select_model),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        ) {
+                            preset.models.forEachIndexed { index, model ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { presetSelectedModelIndex = index }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = model.id,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (presetSelectedModelIndex == index) {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                }
+                                if (index < preset.models.lastIndex) {
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                        modifier = Modifier.padding(horizontal = 12.dp),
+                                    )
+                                }
+                            }
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { presetSelectedModelIndex = preset.models.size }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.ai_custom_model),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (isCustom) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (!hasModels || isCustom) {
+                        OutlinedTextField(
+                            value = presetCustomModelId,
+                            onValueChange = { presetCustomModelId = it },
+                            label = { Text(stringResource(R.string.ai_model_id)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = presetCustomModelName,
+                            onValueChange = { presetCustomModelName = it },
+                            label = { Text(stringResource(R.string.ai_model_remark)) },
+                            supportingText = { Text(stringResource(R.string.ai_model_name_hint)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        store.add(
+                        val finalModelId = if (hasModels && !isCustom) {
+                            preset.models[presetSelectedModelIndex].id
+                        } else {
+                            presetCustomModelId
+                        }
+                        val finalModelName = if (hasModels && !isCustom) {
+                            preset.models[presetSelectedModelIndex].name
+                        } else {
+                            presetCustomModelName.ifBlank { presetCustomModelId }
+                        }
+                        store?.add(
                             AIModelRecord(
-                                providerId = preset.providerId,
-                                serviceName = preset.displayName,
-                                baseUrl = preset.baseUrl,
+                                providerId = preset.id,
+                                serviceName = preset.name,
+                                baseUrl = preset.baseURL,
                                 apiKey = presetApiKey,
-                                modelId = presetModelId.ifBlank { preset.defaultModelId },
-                                modelName = presetModelName.ifBlank { preset.defaultModelId },
+                                modelId = finalModelId,
+                                modelName = finalModelName,
                                 modelType = "LLM",
                                 isPreset = true,
-                                presetIconRes = preset.iconRes,
+                                presetIconRes = AIModelPresetStore.getIconRes(preset.iconResName),
                             )
                         )
-                        importedModels = store.list()
+                        importedModels = store?.list().orEmpty()
                         showPresetDialog = false
                         resetPresetState()
                     },
-                    enabled = presetModelId.isNotBlank(),
+                    enabled = canSave,
                 ) {
                     Text(stringResource(R.string.save))
                 }
@@ -369,6 +465,7 @@ fun SettingAIapiScreen(
                         value = editBaseUrl,
                         onValueChange = { editBaseUrl = it },
                         label = { Text(stringResource(R.string.ai_base_url)) },
+                        supportingText = { Text(stringResource(R.string.ai_base_url_hint)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         enabled = !model.isPreset,
@@ -430,8 +527,8 @@ fun SettingAIapiScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        store.delete(model.id)
-                        store.add(
+                        store?.delete(model.id)
+                        store?.add(
                             AIModelRecord(
                                 id = model.id,
                                 providerId = editProviderId,
@@ -445,7 +542,7 @@ fun SettingAIapiScreen(
                                 presetIconRes = model.presetIconRes,
                             )
                         )
-                        importedModels = store.list()
+                        importedModels = store?.list().orEmpty()
                         showEditDialog = false
                         resetEditState()
                     },
@@ -530,7 +627,7 @@ fun SettingAIapiScreen(
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (model.presetIconRes != null) {
+                            if (model.presetIconRes != null && model.presetIconRes != 0) {
                                 Image(
                                     painter = painterResource(id = model.presetIconRes),
                                     contentDescription = null,
@@ -594,27 +691,30 @@ fun SettingAIapiScreen(
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                presetModels.forEachIndexed { index, preset ->
+                presetProviders.forEachIndexed { index, provider ->
+                    val iconRes = AIModelPresetStore.getIconRes(provider.iconResName)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                currentPreset = preset
-                                presetModelId = preset.defaultModelId
+                                currentPreset = provider
+                                presetSelectedModelIndex = -1
                                 showPresetDialog = true
                             }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Image(
-                            painter = painterResource(id = preset.iconRes),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                        )
+                        if (iconRes != 0) {
+                            Image(
+                                painter = painterResource(id = iconRes),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                        }
                         Text(
-                            text = preset.displayName,
+                            text = provider.name,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier
@@ -627,7 +727,7 @@ fun SettingAIapiScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (index < presetModels.lastIndex) {
+                    if (index < presetProviders.lastIndex) {
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                             modifier = Modifier.padding(horizontal = 16.dp),
@@ -638,21 +738,3 @@ fun SettingAIapiScreen(
         }
     }
 }
-
-private data class PresetModel(
-    val displayName: String,
-    val providerId: String,
-    val baseUrl: String,
-    val defaultModelId: String,
-    val iconRes: Int,
-)
-
-private val presetModels = listOf(
-    PresetModel(
-        displayName = "豆包大模型",
-        providerId = "volcengine",
-        baseUrl = "https://ark.cn-beijing.volces.com/api/v3",
-        defaultModelId = "doubao-pro-4k",
-        iconRes = R.drawable.doubao,
-    ),
-)

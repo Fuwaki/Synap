@@ -133,4 +133,7 @@
     <string name="ai_model_type_llm">大規模言語モデル (LLM)</string>
     <string name="ai_model_type_embedding">Embedding</string>
     <string name="ai_no_imported_models">インポート済みモデルはありません</string>
+    <string name="ai_base_url_hint">OpenAI互換のAPIリンクを入力してください。</string>
+    <string name="ai_select_model">モデルを選択</string>
+    <string name="ai_custom_model">カスタム</string>
 </resources>

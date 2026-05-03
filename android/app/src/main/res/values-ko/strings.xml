@@ -133,4 +133,7 @@
     <string name="ai_model_type_llm">대규모 언어 모델 (LLM)</string>
     <string name="ai_model_type_embedding">Embedding</string>
     <string name="ai_no_imported_models">가져온 모델이 없습니다</string>
+    <string name="ai_base_url_hint">OpenAI 호환 API 링크를 입력하세요.</string>
+    <string name="ai_select_model">모델 선택</string>
+    <string name="ai_custom_model">사용자 정의</string>
 </resources>

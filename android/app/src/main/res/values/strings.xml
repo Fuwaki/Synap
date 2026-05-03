@@ -135,4 +135,7 @@
     <string name="ai_model_type_llm">大语言模型 (LLM)</string>
     <string name="ai_model_type_embedding">Embedding</string>
     <string name="ai_no_imported_models">暂无已导入的模型</string>
+    <string name="ai_base_url_hint">请填写兼容OpenAI的API链接。</string>
+    <string name="ai_select_model">选择模型</string>
+    <string name="ai_custom_model">自定义</string>
 </resources>

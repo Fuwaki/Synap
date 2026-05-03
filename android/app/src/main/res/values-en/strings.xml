@@ -133,4 +133,7 @@
     <string name="ai_model_type_llm">Large Language Model (LLM)</string>
     <string name="ai_model_type_embedding">Embedding</string>
     <string name="ai_no_imported_models">No imported models yet</string>
+    <string name="ai_base_url_hint">Please enter an OpenAI-compatible API link.</string>
+    <string name="ai_select_model">Select Model</string>
+    <string name="ai_custom_model">Custom</string>
 </resources>

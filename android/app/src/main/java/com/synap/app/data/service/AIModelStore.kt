@@ -1,10 +1,7 @@
 package com.synap.app.data.service
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,10 +18,7 @@ data class AIModelRecord(
     val presetIconRes: Int? = null,
 )
 
-@Singleton
-class AIModelStore @Inject constructor(
-    @ApplicationContext context: Context,
-) {
+class AIModelStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun list(): List<AIModelRecord> {

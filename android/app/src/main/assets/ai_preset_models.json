@@ -1,0 +1,48 @@
+{
+  "providers": [
+    {
+      "id": "volcengine",
+      "name": "豆包大模型",
+      "icon": "doubao",
+      "baseURL": "https://ark.cn-beijing.volces.com/api/v3",
+      "models": [
+        { "id": "doubao-seed-2.0-pro", "name": "doubao-seed-2.0-pro" },
+        { "id": "doubao-seed-2.0-lite", "name": "doubao-seed-2.0-lite" },
+        { "id": "doubao-seed-2.0-mini", "name": "doubao-seed-2.0-mini" }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "icon": "deepseek",
+      "baseURL": "https://api.deepseek.com",
+      "models": [
+        { "id": "deepseek-v4-flash", "name": "deepseek-v4-flash" },
+        { "id": "deepseek-v4-pro", "name": "deepseek-v4-pro" }
+      ]
+    },
+    {
+      "id": "xiaomi-mimo",
+      "name": "Xiaomi MIMO",
+      "icon": "xiaomi_mimo",
+      "baseURL": "https://api.xiaomimimo.com/v1/",
+      "models": [
+        { "id": "mimo-v2.5-pro", "name": "MiMo-V2.5-Pro" },
+        { "id": "mimo-v2.5", "name": "MiMo-V2.5" },
+        { "id": "mimo-v2-pro", "name": "MiMo-V2-Pro" },
+        { "id": "mimo-v2-omni", "name": "MiMo-V2-Omni" }
+      ]
+    },
+    {
+      "id": "gemini",
+      "name": "Goodgle Gemini",
+      "icon": "gemini",
+      "baseURL": "https://generativelanguage.googleapis.com/v1beta/",
+      "models": [
+        { "id": "gemini-3-flash", "name": "gemini-3-flash" },
+        { "id": "gemini-1.5-pro", "name": "gemini-1.5-pro" },
+        { "id": "gemini-1.5-flash", "name": "gemini-1.5-flash" }
+      ]
+    }
+  ]
+}

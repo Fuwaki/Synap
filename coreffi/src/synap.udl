@@ -57,6 +57,21 @@ dictionary NoteSegmentBranchChoiceDTO {
     u32 weight;
 };
 
+dictionary NoteNeighborContextDTO {
+    NoteDTO note;
+    u32 weight;
+    sequence<NoteSegmentBranchChoiceDTO> parents;
+    sequence<NoteSegmentBranchChoiceDTO> children;
+};
+
+dictionary NoteNeighborsDTO {
+    NoteDTO note;
+    sequence<NoteSegmentBranchChoiceDTO> parents;
+    sequence<NoteSegmentBranchChoiceDTO> children;
+    sequence<NoteNeighborContextDTO> parent_contexts;
+    sequence<NoteNeighborContextDTO> child_contexts;
+};
+
 dictionary NoteSegmentStepDTO {
     NoteDTO note;
     sequence<NoteSegmentBranchChoiceDTO> next_choices;
@@ -251,6 +266,7 @@ interface SynapService {
         string anchor_id,
         NoteSegmentDirectionDTO direction
     );
+    [Throws=FfiError] NoteNeighborsDTO get_note_neighbors(string note_id);
     [Throws=FfiError] sequence<NoteVersionDTO> get_previous_versions(string note_id);
     [Throws=FfiError] sequence<NoteVersionDTO> get_next_versions(string note_id);
     [Throws=FfiError] sequence<NoteVersionDTO> get_other_versions(string note_id);

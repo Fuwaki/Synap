@@ -302,12 +302,12 @@ impl SimpleComponent for App {
 
         // Notes page with layout switcher
         let layout_stack = gtk::Stack::new();
-        
+
         // List layout
         let list_scroller = gtk::ScrolledWindow::new();
         list_scroller.set_child(Some(&list_box));
         layout_stack.add_named(&list_scroller, Some("list"));
-        
+
         // Waterfall layout
         let waterfall_scroller = gtk::ScrolledWindow::new();
         waterfall_scroller.set_hscrollbar_policy(gtk::PolicyType::Never);
@@ -324,24 +324,26 @@ impl SimpleComponent for App {
         flow_box.set_hexpand(true);
         waterfall_scroller.set_child(Some(&flow_box));
         layout_stack.add_named(&waterfall_scroller, Some("waterfall"));
-        
+
         // Main scroller for infinite scroll (works for both layouts)
         let notes_scroller = gtk::ScrolledWindow::new();
         notes_scroller.set_child(Some(&layout_stack));
-        
+
         // Infinite scroll setup
         let sender_scroll = sender.input_sender().clone();
-        notes_scroller.vadjustment().connect_value_changed(move |adj| {
-            let upper = adj.upper();
-            let page_size = adj.page_size();
-            let value = adj.value();
-            
-            // Trigger load when within 100px of bottom
-            if upper > page_size && value >= upper - page_size - 100.0 {
-                let _ = sender_scroll.send(AppMsg::LoadMoreNotes);
-            }
-        });
-        
+        notes_scroller
+            .vadjustment()
+            .connect_value_changed(move |adj| {
+                let upper = adj.upper();
+                let page_size = adj.page_size();
+                let value = adj.value();
+
+                // Trigger load when within 100px of bottom
+                if upper > page_size && value >= upper - page_size - 100.0 {
+                    let _ = sender_scroll.send(AppMsg::LoadMoreNotes);
+                }
+            });
+
         content_stack.add_named(&notes_scroller, Some("notes"));
 
         // Empty page
@@ -458,12 +460,12 @@ impl SimpleComponent for App {
         tags_box.set_margin_bottom(24);
         tags_box.set_margin_start(24);
         tags_box.set_margin_end(24);
-        
+
         let tags_label = gtk::Label::new(Some("所有标签"));
         tags_label.add_css_class("heading");
         tags_label.set_halign(gtk::Align::Start);
         tags_box.append(&tags_label);
-        
+
         let tags_flow_box = gtk::FlowBox::new();
         tags_flow_box.set_selection_mode(gtk::SelectionMode::None);
         tags_flow_box.set_homogeneous(true);
@@ -471,7 +473,7 @@ impl SimpleComponent for App {
         tags_flow_box.set_min_children_per_line(1);
         tags_flow_box.set_column_spacing(12);
         tags_flow_box.set_row_spacing(12);
-        
+
         // We'll populate tags dynamically in sync_ui
         tags_box.append(&tags_flow_box);
         tags_page.set_child(Some(&tags_box));
@@ -484,10 +486,10 @@ impl SimpleComponent for App {
         timeline_box.set_margin_bottom(24);
         timeline_box.set_margin_start(24);
         timeline_box.set_margin_end(24);
-        
+
         let timeline_container = gtk::Box::new(gtk::Orientation::Vertical, 24);
         timeline_box.append(&timeline_container);
-        
+
         timeline_page.set_child(Some(&timeline_box));
         content_stack.add_named(&timeline_page, Some("timeline"));
 
@@ -581,9 +583,9 @@ impl SimpleComponent for App {
                         let sender = sender.clone();
                         gtk::glib::spawn_future_local(async move {
                             let result = core.get_recent_sessions(None, Some(20));
-                            let _ = sender.input_sender().send(AppMsg::TimelineLoaded(
-                                result.map(|page| page.sessions),
-                            ));
+                            let _ = sender
+                                .input_sender()
+                                .send(AppMsg::TimelineLoaded(result.map(|page| page.sessions)));
                         });
                     }
                 }
@@ -664,8 +666,10 @@ impl SimpleComponent for App {
                         let sender = sender.clone();
                         let parent_id_for_reload = parent_id.clone();
                         gtk::glib::spawn_future_local(async move {
-                            let result =
-                                crate::usecase::load_note_detail(core.as_ref(), &parent_id_for_reload);
+                            let result = crate::usecase::load_note_detail(
+                                core.as_ref(),
+                                &parent_id_for_reload,
+                            );
                             let _ = sender.input_sender().send(AppMsg::NoteDetailLoaded(result));
                         });
 
@@ -724,17 +728,15 @@ impl SimpleComponent for App {
                 }
             }
 
-            AppMsg::NoteDetailLoaded(result) => {
-                match result {
-                    Ok(data) => {
-                        self.state.selected_note_full = Some(data);
-                        self.state.status = None;
-                    }
-                    Err(error) => {
-                        self.state.status = Some(format!("加载详情失败: {error}"));
-                    }
+            AppMsg::NoteDetailLoaded(result) => match result {
+                Ok(data) => {
+                    self.state.selected_note_full = Some(data);
+                    self.state.status = None;
                 }
-            }
+                Err(error) => {
+                    self.state.status = Some(format!("加载详情失败: {error}"));
+                }
+            },
 
             AppMsg::OpenNoteDetail(note_id) => {
                 self.state.selected_note_id = Some(note_id.clone());
@@ -814,31 +816,27 @@ impl SimpleComponent for App {
                 });
             }
 
-            AppMsg::TagsLoaded(result) => {
-                match result {
-                    Ok(tags) => {
-                        self.state.all_tags = tags;
-                        self.state.status = None;
-                    }
-                    Err(error) => {
-                        self.state.status = Some(format!("加载标签失败: {error}"));
-                    }
+            AppMsg::TagsLoaded(result) => match result {
+                Ok(tags) => {
+                    self.state.all_tags = tags;
+                    self.state.status = None;
                 }
-            }
+                Err(error) => {
+                    self.state.status = Some(format!("加载标签失败: {error}"));
+                }
+            },
 
-            AppMsg::TagNotesLoaded(result) => {
-                match result {
-                    Ok(notes) => {
-                        self.state.tag_notes = notes;
-                        self.state.sync_selection();
-                        self.rebuild_list(&sender);
-                        self.state.status = None;
-                    }
-                    Err(error) => {
-                        self.state.status = Some(format!("加载标签笔记失败: {error}"));
-                    }
+            AppMsg::TagNotesLoaded(result) => match result {
+                Ok(notes) => {
+                    self.state.tag_notes = notes;
+                    self.state.sync_selection();
+                    self.rebuild_list(&sender);
+                    self.state.status = None;
                 }
-            }
+                Err(error) => {
+                    self.state.status = Some(format!("加载标签笔记失败: {error}"));
+                }
+            },
 
             AppMsg::TagSuggestionsLoaded(result) => {
                 match result {
@@ -851,17 +849,15 @@ impl SimpleComponent for App {
                 }
             }
 
-            AppMsg::TimelineLoaded(result) => {
-                match result {
-                    Ok(sessions) => {
-                        self.state.timeline_sessions = sessions;
-                        self.state.status = None;
-                    }
-                    Err(error) => {
-                        self.state.status = Some(format!("加载时间线失败: {error}"));
-                    }
+            AppMsg::TimelineLoaded(result) => match result {
+                Ok(sessions) => {
+                    self.state.timeline_sessions = sessions;
+                    self.state.status = None;
                 }
-            }
+                Err(error) => {
+                    self.state.status = Some(format!("加载时间线失败: {error}"));
+                }
+            },
 
             AppMsg::ClearFilters => {
                 self.state.selected_tag = None;
@@ -1078,7 +1074,7 @@ impl App {
         }
         for session in &self.state.timeline_sessions {
             let session_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
-            
+
             let start_time = crate::domain::format_timestamp(session.started_at);
             let end_time = crate::domain::format_timestamp(session.ended_at);
             let header = gtk::Label::new(Some(&format!(
@@ -1088,7 +1084,7 @@ impl App {
             header.add_css_class("heading");
             header.set_halign(gtk::Align::Start);
             session_box.append(&header);
-            
+
             let notes_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
             for note in &session.notes {
                 let note_id = note.id.clone();
@@ -1096,12 +1092,12 @@ impl App {
                 notes_box.append(&row);
             }
             session_box.append(&notes_box);
-            
+
             let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
             separator.set_margin_top(12);
             separator.set_margin_bottom(12);
             session_box.append(&separator);
-            
+
             self.timeline_container.append(&session_box);
         }
     }
@@ -1121,7 +1117,12 @@ impl App {
         self.rebuild_list(sender);
     }
 
-    fn refresh_home_with_selection(&mut self, sender: &ComponentSender<Self>, note_id: String, toast_msg: &str) {
+    fn refresh_home_with_selection(
+        &mut self,
+        sender: &ComponentSender<Self>,
+        note_id: String,
+        toast_msg: &str,
+    ) {
         let query = self.state.search_query.clone();
         match load_home(self.core.as_ref(), &query) {
             Ok(home) => {
@@ -1380,7 +1381,12 @@ fn build_waterfall_card(
     // Tags
     if !note.tags.is_empty() {
         let tags_label = gtk::Label::new(Some(
-            &note.tags.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join("  ")
+            &note
+                .tags
+                .iter()
+                .map(|t| format!("#{t}"))
+                .collect::<Vec<_>>()
+                .join("  "),
         ));
         tags_label.add_css_class("caption");
         tags_label.set_halign(gtk::Align::Start);

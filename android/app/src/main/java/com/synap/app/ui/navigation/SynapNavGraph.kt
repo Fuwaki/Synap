@@ -207,10 +207,14 @@ fun SynapNavGraph(
                         onNavigateBack = { navController.popBackStack() },
                         onOpenOriginDetail = { noteId -> navController.navigate(detailRoute(noteId)) },
                         onOpenBranch = viewModel::selectBranch,
+                        onOpenNodeAsAnchor = viewModel::openNodeAsAnchor,
                         onShowBranchSheet = viewModel::openBranchSheet,
                         onDismissBranchSheet = viewModel::dismissBranchSheet,
                         onBacktrack = viewModel::goBackInHistory,
                         onRefresh = viewModel::refresh,
+                        onOpenGraph = viewModel::openGraphSheet,
+                        onDismissGraph = viewModel::dismissGraphSheet,
+                        onFocusNode = viewModel::focusNode,
                     )
                 }
 

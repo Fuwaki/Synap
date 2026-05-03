@@ -14,6 +14,7 @@ import com.synap.app.data.error.SynapError
 import com.synap.app.data.model.LocalIdentity
 import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.NoteFeedStatus
+import com.synap.app.data.model.NoteNeighborsRecord
 import com.synap.app.data.model.NoteRecord
 import com.synap.app.data.model.NoteSegmentDirection
 import com.synap.app.data.model.NoteSegmentRecord
@@ -37,6 +38,7 @@ import com.synap.app.data.model.toCursorPage
 import com.synap.app.data.model.toDto
 import com.synap.app.data.model.toNoteRecord
 import com.synap.app.data.model.toNoteRecords
+import com.synap.app.data.model.toNoteNeighborsRecord
 import com.synap.app.data.model.toNoteSegmentRecord
 import com.synap.app.data.model.toNoteVersionRecords
 import com.synap.app.data.model.toSearchResultRecords
@@ -275,6 +277,9 @@ class CoreffiRuntime @Inject constructor(
         withService { service ->
             service.getNoteSegment(anchorId, direction.toFfiDirection()).toNoteSegmentRecord()
         }
+
+    override suspend fun getNoteNeighbors(noteId: String): Result<NoteNeighborsRecord> =
+        withService { service -> service.getNoteNeighbors(noteId).toNoteNeighborsRecord() }
 
     override suspend fun getPreviousVersions(noteId: String): Result<List<NoteVersionRecord>> =
         withService { service -> service.getPreviousVersions(noteId).toNoteVersionRecords() }

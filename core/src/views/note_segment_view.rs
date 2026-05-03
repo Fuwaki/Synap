@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     dto::{
-        NoteSegmentBranchChoiceDTO, NoteSegmentDTO, NoteSegmentDirectionDTO, NoteSegmentStepDTO,
+        NoteNeighborContextDTO, NoteNeighborsDTO, NoteSegmentBranchChoiceDTO, NoteSegmentDTO,
+        NoteSegmentDirectionDTO, NoteSegmentStepDTO,
     },
     error::NoteError,
     models::note::NoteReader,
@@ -98,6 +99,58 @@ impl<'a, 'b> NoteSegmentView<'a, 'b> {
         })
     }
 
+    pub fn neighbors_dto(&self, id: Uuid) -> Result<NoteNeighborsDTO, NoteError> {
+        let note = self
+            .reader
+            .get_by_id(&id)
+            .map_err(NoteError::Db)?
+            .ok_or(NoteError::IdNotFound { id })?;
+        let parents = self.branch_choices(id, NoteSegmentDirection::Backward)?;
+        let children = self.branch_choices(id, NoteSegmentDirection::Forward)?;
+        let parent_contexts = parents
+            .iter()
+            .map(|choice| self.neighbor_context_dto(choice, id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let child_contexts = children
+            .iter()
+            .map(|choice| self.neighbor_context_dto(choice, id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(NoteNeighborsDTO {
+            note: NoteView::new(self.reader, note).to_dto()?,
+            parents,
+            children,
+            parent_contexts,
+            child_contexts,
+        })
+    }
+
+    fn neighbor_context_dto(
+        &self,
+        choice: &NoteSegmentBranchChoiceDTO,
+        center_id: Uuid,
+    ) -> Result<NoteNeighborContextDTO, NoteError> {
+        let center_id = center_id.to_string();
+        let choice_id = parse_note_id(&choice.note.id)?;
+        let parents = self
+            .branch_choices(choice_id, NoteSegmentDirection::Backward)?
+            .into_iter()
+            .filter(|item| item.note.id != center_id)
+            .collect();
+        let children = self
+            .branch_choices(choice_id, NoteSegmentDirection::Forward)?
+            .into_iter()
+            .filter(|item| item.note.id != center_id)
+            .collect();
+
+        Ok(NoteNeighborContextDTO {
+            note: choice.note.clone(),
+            weight: choice.weight,
+            parents,
+            children,
+        })
+    }
+
     fn branch_choices(
         &self,
         id: Uuid,
@@ -111,9 +164,7 @@ impl<'a, 'b> NoteSegmentView<'a, 'b> {
         choices.sort_by(|left, right| {
             let left_weight = self.weight_for(*left, direction);
             let right_weight = self.weight_for(*right, direction);
-            right_weight
-                .cmp(&left_weight)
-                .then_with(|| left.cmp(right))
+            right_weight.cmp(&left_weight).then_with(|| left.cmp(right))
         });
 
         choices
@@ -148,7 +199,11 @@ impl<'a, 'b> NoteSegmentView<'a, 'b> {
     ) -> Result<Vec<Uuid>, NoteError> {
         let mut result = Vec::new();
         for neighbor_id in collect_neighbor_ids(self.reader, id, direction)? {
-            let note_ref = match self.reader.get_ref_by_id(&neighbor_id).map_err(NoteError::Db)? {
+            let note_ref = match self
+                .reader
+                .get_ref_by_id(&neighbor_id)
+                .map_err(NoteError::Db)?
+            {
                 Some(note_ref) => note_ref,
                 None => return Err(NoteError::IdNotFound { id: neighbor_id }),
             };
@@ -193,12 +248,18 @@ fn parse_note_id(value: &str) -> Result<Uuid, NoteError> {
     Uuid::parse_str(value).map_err(|_| NoteError::InvalidTitle("invalid note id".to_string()))
 }
 
-fn collect_connected_ids(reader: &NoteReader<'_>, anchor_id: Uuid) -> Result<HashSet<Uuid>, NoteError> {
+fn collect_connected_ids(
+    reader: &NoteReader<'_>,
+    anchor_id: Uuid,
+) -> Result<HashSet<Uuid>, NoteError> {
     let mut seen = HashSet::from([anchor_id]);
     let mut queue = VecDeque::from([anchor_id]);
 
     while let Some(current_id) = queue.pop_front() {
-        for direction in [NoteSegmentDirection::Forward, NoteSegmentDirection::Backward] {
+        for direction in [
+            NoteSegmentDirection::Forward,
+            NoteSegmentDirection::Backward,
+        ] {
             for neighbor_id in collect_neighbor_ids(reader, current_id, direction)? {
                 if seen.insert(neighbor_id) {
                     queue.push_back(neighbor_id);
@@ -333,7 +394,8 @@ mod tests {
 
         let read_txn = db.begin_read().unwrap();
         let reader = NoteReader::new(&read_txn).unwrap();
-        let view = NoteSegmentView::new(&reader, a.get_id(), NoteSegmentDirection::Forward).unwrap();
+        let view =
+            NoteSegmentView::new(&reader, a.get_id(), NoteSegmentDirection::Forward).unwrap();
         let dto = view.to_dto().unwrap();
 
         assert_eq!(dto.steps.len(), 2);
@@ -345,6 +407,44 @@ mod tests {
         assert_eq!(dto.steps[1].next_choices[0].weight, 2);
         assert_eq!(dto.steps[1].next_choices[1].note.id, c.get_id().to_string());
         assert_eq!(dto.steps[1].next_choices[1].weight, 1);
+    }
+
+    #[test]
+    fn segment_stops_at_anchor_branch_and_does_not_expand_grandchildren() {
+        let db = create_temp_db();
+
+        let write_txn = db.begin_write().unwrap();
+        let a = Note::create(&write_txn, "a".to_string(), vec![]).unwrap();
+        let b = Note::create(&write_txn, "b".to_string(), vec![]).unwrap();
+        let c = Note::create(&write_txn, "c".to_string(), vec![]).unwrap();
+        let d = Note::create(&write_txn, "d".to_string(), vec![]).unwrap();
+        a.reply(&write_txn, &b).unwrap();
+        a.reply(&write_txn, &c).unwrap();
+        b.reply(&write_txn, &d).unwrap();
+        write_txn.commit().unwrap();
+
+        let read_txn = db.begin_read().unwrap();
+        let reader = NoteReader::new(&read_txn).unwrap();
+        let view =
+            NoteSegmentView::new(&reader, a.get_id(), NoteSegmentDirection::Forward).unwrap();
+        let dto = view.to_dto().unwrap();
+
+        assert_eq!(dto.steps.len(), 1);
+        assert_eq!(dto.steps[0].note.id, a.get_id().to_string());
+        assert!(dto.steps[0].stops_here);
+        assert_eq!(dto.steps[0].next_choices.len(), 2);
+        assert!(dto.steps[0]
+            .next_choices
+            .iter()
+            .any(|choice| choice.note.id == b.get_id().to_string()));
+        assert!(dto.steps[0]
+            .next_choices
+            .iter()
+            .any(|choice| choice.note.id == c.get_id().to_string()));
+        assert!(!dto.steps[0]
+            .next_choices
+            .iter()
+            .any(|choice| choice.note.id == d.get_id().to_string()));
     }
 
     #[test]
@@ -363,7 +463,8 @@ mod tests {
 
         let read_txn = db.begin_read().unwrap();
         let reader = NoteReader::new(&read_txn).unwrap();
-        let view = NoteSegmentView::new(&reader, d.get_id(), NoteSegmentDirection::Backward).unwrap();
+        let view =
+            NoteSegmentView::new(&reader, d.get_id(), NoteSegmentDirection::Backward).unwrap();
         let dto = view.to_dto().unwrap();
 
         assert_eq!(dto.steps.len(), 2);
@@ -371,5 +472,55 @@ mod tests {
         assert_eq!(dto.steps[1].note.id, c.get_id().to_string());
         assert!(dto.steps[1].stops_here);
         assert_eq!(dto.steps[1].next_choices.len(), 2);
+    }
+
+    #[test]
+    fn neighbors_returns_true_parents_and_children_independent_of_segment_direction() {
+        let db = create_temp_db();
+
+        let write_txn = db.begin_write().unwrap();
+        let a_prime = Note::create(&write_txn, "a'".to_string(), vec![]).unwrap();
+        let a = Note::create(&write_txn, "a".to_string(), vec![]).unwrap();
+        let b_prime = Note::create(&write_txn, "b'".to_string(), vec![]).unwrap();
+        let b = Note::create(&write_txn, "b".to_string(), vec![]).unwrap();
+        let c = Note::create(&write_txn, "c".to_string(), vec![]).unwrap();
+        a_prime.reply(&write_txn, &a).unwrap();
+        b_prime.reply(&write_txn, &b).unwrap();
+        b.reply(&write_txn, &a).unwrap();
+        a.reply(&write_txn, &c).unwrap();
+        write_txn.commit().unwrap();
+
+        let read_txn = db.begin_read().unwrap();
+        let reader = NoteReader::new(&read_txn).unwrap();
+        let view =
+            NoteSegmentView::new(&reader, b.get_id(), NoteSegmentDirection::Forward).unwrap();
+        let dto = view.neighbors_dto(a.get_id()).unwrap();
+
+        assert_eq!(dto.note.id, a.get_id().to_string());
+        assert_eq!(dto.parents.len(), 2);
+        assert!(dto
+            .parents
+            .iter()
+            .any(|choice| choice.note.id == a_prime.get_id().to_string()));
+        assert!(dto
+            .parents
+            .iter()
+            .any(|choice| choice.note.id == b.get_id().to_string()));
+        assert_eq!(dto.children.len(), 1);
+        assert_eq!(dto.children[0].note.id, c.get_id().to_string());
+        let b_context = dto
+            .parent_contexts
+            .iter()
+            .find(|context| context.note.id == b.get_id().to_string())
+            .unwrap();
+        assert_eq!(b_context.parents.len(), 1);
+        assert_eq!(b_context.parents[0].note.id, b_prime.get_id().to_string());
+        let c_context = dto
+            .child_contexts
+            .iter()
+            .find(|context| context.note.id == c.get_id().to_string())
+            .unwrap();
+        assert!(c_context.parents.is_empty());
+        assert!(c_context.children.is_empty());
     }
 }

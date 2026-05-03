@@ -21,11 +21,11 @@ use crate::{
     crypto,
     db::umap::UmapCache,
     dto::{
-        LocalIdentityDTO, NoteDTO, NoteSegmentDTO, NoteSegmentDirectionDTO, NoteVersionDTO,
-        PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO, SearchResultDTO, SearchSourceDTO,
-        ShareStatsDTO, StarmapPointDTO, SyncSessionDTO, SyncSessionRecordDTO,
-        SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO, TimelineNotesPageDTO,
-        TimelineSessionDTO, TimelineSessionsPageDTO,
+        LocalIdentityDTO, NoteDTO, NoteNeighborContextDTO, NoteNeighborsDTO, NoteSegmentDTO,
+        NoteSegmentDirectionDTO, NoteVersionDTO, PeerDTO, PeerTrustStatusDTO, PublicKeyInfoDTO,
+        SearchResultDTO, SearchSourceDTO, ShareStatsDTO, StarmapPointDTO, SyncSessionDTO,
+        SyncSessionRecordDTO, SyncSessionRoleDTO, SyncStatsDTO, SyncStatusDTO,
+        TimelineNotesPageDTO, TimelineSessionDTO, TimelineSessionsPageDTO,
     },
     error::ServiceError,
     models::{

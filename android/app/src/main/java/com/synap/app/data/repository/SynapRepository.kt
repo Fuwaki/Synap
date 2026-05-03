@@ -1,6 +1,7 @@
 package com.synap.app.data.repository
 
 import com.synap.app.data.model.NoteFeedFilter
+import com.synap.app.data.model.NoteNeighborsRecord
 import com.synap.app.data.model.NoteRecord
 import com.synap.app.data.model.NoteSegmentDirection
 import com.synap.app.data.model.NoteSegmentRecord
@@ -55,6 +56,8 @@ interface SynapRepository {
         anchorId: String,
         direction: NoteSegmentDirection,
     ): NoteSegmentRecord
+
+    suspend fun getNoteNeighbors(noteId: String): NoteNeighborsRecord
 
     suspend fun getPreviousVersions(noteId: String): List<NoteVersionRecord>
 
@@ -190,6 +193,9 @@ class SynapRepositoryImpl @Inject constructor(
         anchorId: String,
         direction: NoteSegmentDirection,
     ): NoteSegmentRecord = service.getNoteSegment(anchorId, direction).unwrap()
+
+    override suspend fun getNoteNeighbors(noteId: String): NoteNeighborsRecord =
+        service.getNoteNeighbors(noteId).unwrap()
 
     override suspend fun getPreviousVersions(noteId: String): List<NoteVersionRecord> =
         service.getPreviousVersions(noteId).unwrap()

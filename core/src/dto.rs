@@ -123,6 +123,25 @@ pub struct NoteSegmentBranchChoiceDTO {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct NoteNeighborContextDTO {
+    pub note: NoteDTO,
+    pub weight: u32,
+    pub parents: Vec<NoteSegmentBranchChoiceDTO>,
+    pub children: Vec<NoteSegmentBranchChoiceDTO>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteNeighborsDTO {
+    pub note: NoteDTO,
+    pub parents: Vec<NoteSegmentBranchChoiceDTO>,
+    pub children: Vec<NoteSegmentBranchChoiceDTO>,
+    pub parent_contexts: Vec<NoteNeighborContextDTO>,
+    pub child_contexts: Vec<NoteNeighborContextDTO>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct NoteSegmentStepDTO {
     pub note: NoteDTO,
     pub next_choices: Vec<NoteSegmentBranchChoiceDTO>,

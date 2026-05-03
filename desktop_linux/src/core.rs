@@ -14,7 +14,7 @@ pub trait DesktopCore {
         limit: Option<usize>,
     ) -> CoreResult<TimelineNotesPageDTO>;
     fn deleted_notes(&self, cursor: Option<&str>, limit: Option<usize>)
-        -> CoreResult<Vec<NoteDTO>>;
+    -> CoreResult<Vec<NoteDTO>>;
     fn deleted_notes_page(
         &self,
         cursor: Option<&str>,

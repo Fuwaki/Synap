@@ -1,5 +1,7 @@
 package com.synap.app.data.model
 
+import com.fuwaki.synap.bindings.uniffi.synap_coreffi.NoteNeighborContextDto
+import com.fuwaki.synap.bindings.uniffi.synap_coreffi.NoteNeighborsDto
 import com.fuwaki.synap.bindings.uniffi.synap_coreffi.NoteSegmentBranchChoiceDto
 import com.fuwaki.synap.bindings.uniffi.synap_coreffi.NoteSegmentDirectionDto
 import com.fuwaki.synap.bindings.uniffi.synap_coreffi.NoteSegmentDto
@@ -31,6 +33,23 @@ data class NoteSegmentBranchChoiceRecord(
     }
 }
 
+data class NoteNeighborContextRecord(
+    val note: NoteRecord,
+    val weight: UInt,
+    val parents: List<NoteSegmentBranchChoiceRecord>,
+    val children: List<NoteSegmentBranchChoiceRecord>,
+) {
+    companion object {
+        fun fromDto(dto: NoteNeighborContextDto): NoteNeighborContextRecord =
+            NoteNeighborContextRecord(
+                note = dto.note.toNoteRecord(),
+                weight = dto.weight,
+                parents = dto.parents.map(NoteSegmentBranchChoiceRecord::fromDto),
+                children = dto.children.map(NoteSegmentBranchChoiceRecord::fromDto),
+            )
+    }
+}
+
 data class NoteSegmentStepRecord(
     val note: NoteRecord,
     val nextChoices: List<NoteSegmentBranchChoiceRecord>,
@@ -44,6 +63,25 @@ data class NoteSegmentStepRecord(
                 nextChoices = dto.nextChoices.map(NoteSegmentBranchChoiceRecord::fromDto),
                 prevChoices = dto.prevChoices.map(NoteSegmentBranchChoiceRecord::fromDto),
                 stopsHere = dto.stopsHere,
+            )
+    }
+}
+
+data class NoteNeighborsRecord(
+    val note: NoteRecord,
+    val parents: List<NoteSegmentBranchChoiceRecord>,
+    val children: List<NoteSegmentBranchChoiceRecord>,
+    val parentContexts: List<NoteNeighborContextRecord>,
+    val childContexts: List<NoteNeighborContextRecord>,
+) {
+    companion object {
+        fun fromDto(dto: NoteNeighborsDto): NoteNeighborsRecord =
+            NoteNeighborsRecord(
+                note = dto.note.toNoteRecord(),
+                parents = dto.parents.map(NoteSegmentBranchChoiceRecord::fromDto),
+                children = dto.children.map(NoteSegmentBranchChoiceRecord::fromDto),
+                parentContexts = dto.parentContexts.map(NoteNeighborContextRecord::fromDto),
+                childContexts = dto.childContexts.map(NoteNeighborContextRecord::fromDto),
             )
     }
 }
@@ -63,3 +101,6 @@ data class NoteSegmentRecord(
 }
 
 internal fun NoteSegmentDto.toNoteSegmentRecord(): NoteSegmentRecord = NoteSegmentRecord.fromDto(this)
+
+internal fun NoteNeighborsDto.toNoteNeighborsRecord(): NoteNeighborsRecord =
+    NoteNeighborsRecord.fromDto(this)

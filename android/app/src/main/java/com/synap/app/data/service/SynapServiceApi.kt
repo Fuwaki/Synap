@@ -3,6 +3,7 @@ package com.synap.app.data.service
 import com.synap.app.data.model.NoteFeedFilter
 import com.synap.app.data.model.LocalIdentity
 import com.synap.app.data.model.NoteRecord
+import com.synap.app.data.model.NoteNeighborsRecord
 import com.synap.app.data.model.NoteSegmentDirection
 import com.synap.app.data.model.NoteSegmentRecord
 import com.synap.app.data.model.NoteVersionRecord
@@ -77,6 +78,8 @@ interface SynapServiceApi {
         anchorId: String,
         direction: NoteSegmentDirection,
     ): Result<NoteSegmentRecord>
+
+    suspend fun getNoteNeighbors(noteId: String): Result<NoteNeighborsRecord>
 
     suspend fun getPreviousVersions(noteId: String): Result<List<NoteVersionRecord>>
 

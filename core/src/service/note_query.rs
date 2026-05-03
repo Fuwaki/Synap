@@ -401,6 +401,16 @@ impl SynapService {
         })
     }
 
+    pub fn get_note_neighbors(&self, note_id: &str) -> Result<NoteNeighborsDTO, ServiceError> {
+        self.with_read(|_tx, reader| {
+            let note_uuid = Self::parse_id(note_id)?;
+            Self::require_live_note(reader, note_uuid, note_id)?;
+            NoteSegmentView::new(reader, note_uuid, NoteSegmentDirection::Forward)?
+                .neighbors_dto(note_uuid)
+                .map_err(Into::into)
+        })
+    }
+
     pub fn get_next_versions(&self, note_id: &str) -> Result<Vec<NoteVersionDTO>, ServiceError> {
         self.with_read(|_tx, reader| {
             let uuid = Self::parse_id(note_id)?;

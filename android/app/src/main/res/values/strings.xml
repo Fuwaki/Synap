@@ -131,4 +131,8 @@
     <string name="ai_doubao">豆包大模型</string>
     <string name="ai_edit_model">编辑模型</string>
     <string name="save">保存</string>
+    <string name="ai_model_type">大模型类型</string>
+    <string name="ai_model_type_llm">大语言模型 (LLM)</string>
+    <string name="ai_model_type_embedding">Embedding</string>
+    <string name="ai_no_imported_models">暂无已导入的模型</string>
 </resources>

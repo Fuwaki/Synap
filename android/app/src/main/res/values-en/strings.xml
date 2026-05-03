@@ -129,4 +129,8 @@
     <string name="ai_doubao">Doubao LLM</string>
     <string name="ai_edit_model">Edit Model</string>
     <string name="save">Save</string>
+    <string name="ai_model_type">Model Type</string>
+    <string name="ai_model_type_llm">Large Language Model (LLM)</string>
+    <string name="ai_model_type_embedding">Embedding</string>
+    <string name="ai_no_imported_models">No imported models yet</string>
 </resources>

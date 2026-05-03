@@ -129,4 +129,8 @@
     <string name="ai_doubao"> Doubao LLM</string>
     <string name="ai_edit_model">모델 편집</string>
     <string name="save">저장</string>
+    <string name="ai_model_type">모델 유형</string>
+    <string name="ai_model_type_llm">대규모 언어 모델 (LLM)</string>
+    <string name="ai_model_type_embedding">Embedding</string>
+    <string name="ai_no_imported_models">가져온 모델이 없습니다</string>
 </resources>

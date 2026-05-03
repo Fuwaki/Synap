@@ -129,4 +129,8 @@
     <string name="ai_doubao">豆包大モデル</string>
     <string name="ai_edit_model">モデルを編集</string>
     <string name="save">保存</string>
+    <string name="ai_model_type">モデルタイプ</string>
+    <string name="ai_model_type_llm">大規模言語モデル (LLM)</string>
+    <string name="ai_model_type_embedding">Embedding</string>
+    <string name="ai_no_imported_models">インポート済みモデルはありません</string>
 </resources>

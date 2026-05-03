@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,12 +14,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -27,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -42,10 +46,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.synap.app.R
+import com.synap.app.data.service.AIModelRecord
+import com.synap.app.data.service.AIModelStore
 import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +63,10 @@ import kotlinx.coroutines.CancellationException
 fun SettingAIapiScreen(
     onNavigateBack: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val store = remember { AIModelStore(context) }
+    var importedModels by remember { mutableStateOf(store.list()) }
+
     // ========== 增加AI提供商弹窗状态 ==========
     var showAddProviderDialog by remember { mutableStateOf(false) }
     var providerId by remember { mutableStateOf("") }
@@ -61,12 +75,25 @@ fun SettingAIapiScreen(
     var apiKey by remember { mutableStateOf("") }
     var modelId by remember { mutableStateOf("") }
     var modelName by remember { mutableStateOf("") }
+    var modelType by remember { mutableStateOf("LLM") }
 
-    // ========== 豆包大模型弹窗状态 ==========
-    var showDoubaoDialog by remember { mutableStateOf(false) }
-    var doubaoApiKey by remember { mutableStateOf("") }
-    var doubaoModelId by remember { mutableStateOf("") }
-    var doubaoModelName by remember { mutableStateOf("") }
+    // ========== 预设模型弹窗状态 ==========
+    var showPresetDialog by remember { mutableStateOf(false) }
+    var presetApiKey by remember { mutableStateOf("") }
+    var presetModelId by remember { mutableStateOf("") }
+    var presetModelName by remember { mutableStateOf("") }
+    var currentPreset by remember { mutableStateOf<PresetModel?>(null) }
+
+    // ========== 编辑模型弹窗状态 ==========
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editingModel by remember { mutableStateOf<AIModelRecord?>(null) }
+    var editProviderId by remember { mutableStateOf("") }
+    var editServiceName by remember { mutableStateOf("") }
+    var editBaseUrl by remember { mutableStateOf("") }
+    var editApiKey by remember { mutableStateOf("") }
+    var editModelId by remember { mutableStateOf("") }
+    var editModelName by remember { mutableStateOf("") }
+    var editModelType by remember { mutableStateOf("LLM") }
 
     var backProgress by remember { mutableFloatStateOf(0f) }
 
@@ -81,14 +108,56 @@ fun SettingAIapiScreen(
         }
     }
 
+    fun resetAddProviderState() {
+        providerId = ""
+        serviceName = ""
+        baseUrl = ""
+        apiKey = ""
+        modelId = ""
+        modelName = ""
+        modelType = "LLM"
+    }
+
+    fun resetPresetState() {
+        presetApiKey = ""
+        presetModelId = ""
+        presetModelName = ""
+        currentPreset = null
+    }
+
+    fun resetEditState() {
+        editingModel = null
+        editProviderId = ""
+        editServiceName = ""
+        editBaseUrl = ""
+        editApiKey = ""
+        editModelId = ""
+        editModelName = ""
+        editModelType = "LLM"
+    }
+
+    fun openEditDialog(model: AIModelRecord) {
+        editingModel = model
+        editProviderId = model.providerId
+        editServiceName = model.serviceName
+        editBaseUrl = model.baseUrl
+        editApiKey = model.apiKey
+        editModelId = model.modelId
+        editModelName = model.modelName
+        editModelType = model.modelType
+        showEditDialog = true
+    }
+
     // ========== 增加AI提供商弹窗 ==========
     if (showAddProviderDialog) {
         AlertDialog(
             onDismissRequest = { showAddProviderDialog = false },
-            icon = { Icon(Icons.Filled.Add, contentDescription = null) },
             title = { Text(stringResource(R.string.ai_add_provider)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     OutlinedTextField(
                         value = providerId,
                         onValueChange = { providerId = it },
@@ -135,49 +204,95 @@ fun SettingAIapiScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
+                    Text(
+                        text = stringResource(R.string.ai_model_type),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { modelType = "LLM" },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (modelType == "LLM") {
+                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(stringResource(R.string.ai_model_type_llm))
+                        }
+                        OutlinedButton(
+                            onClick = { modelType = "Embedding" },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (modelType == "Embedding") {
+                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(stringResource(R.string.ai_model_type_embedding))
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { showAddProviderDialog = false },
+                    onClick = {
+                        store.add(
+                            AIModelRecord(
+                                providerId = providerId,
+                                serviceName = serviceName.ifBlank { providerId },
+                                baseUrl = baseUrl,
+                                apiKey = apiKey,
+                                modelId = modelId,
+                                modelName = modelName.ifBlank { modelId },
+                                modelType = modelType,
+                            )
+                        )
+                        importedModels = store.list()
+                        showAddProviderDialog = false
+                        resetAddProviderState()
+                    },
                     enabled = providerId.isNotBlank() && baseUrl.isNotBlank() && modelId.isNotBlank(),
                 ) {
                     Text(stringResource(R.string.save))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddProviderDialog = false }) {
+                TextButton(onClick = {
+                    showAddProviderDialog = false
+                    resetAddProviderState()
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             },
         )
     }
 
-    // ========== 豆包大模型弹窗 ==========
-    if (showDoubaoDialog) {
+    // ========== 预设模型弹窗 ==========
+    if (showPresetDialog && currentPreset != null) {
+        val preset = currentPreset!!
         AlertDialog(
-            onDismissRequest = { showDoubaoDialog = false },
-            title = { Text(stringResource(R.string.ai_doubao)) },
+            onDismissRequest = { showPresetDialog = false },
+            title = { Text(preset.displayName) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
-                        value = doubaoApiKey,
-                        onValueChange = { doubaoApiKey = it },
+                        value = presetApiKey,
+                        onValueChange = { presetApiKey = it },
                         label = { Text(stringResource(R.string.ai_api_key)) },
                         supportingText = { Text(stringResource(R.string.ai_api_key_hint)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
                     OutlinedTextField(
-                        value = doubaoModelId,
-                        onValueChange = { doubaoModelId = it },
+                        value = presetModelId,
+                        onValueChange = { presetModelId = it },
                         label = { Text(stringResource(R.string.ai_model_id)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
                     OutlinedTextField(
-                        value = doubaoModelName,
-                        onValueChange = { doubaoModelName = it },
+                        value = presetModelName,
+                        onValueChange = { presetModelName = it },
                         label = { Text(stringResource(R.string.ai_model_remark)) },
                         supportingText = { Text(stringResource(R.string.ai_model_name_hint)) },
                         modifier = Modifier.fillMaxWidth(),
@@ -187,14 +302,163 @@ fun SettingAIapiScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = { showDoubaoDialog = false },
-                    enabled = doubaoModelId.isNotBlank(),
+                    onClick = {
+                        store.add(
+                            AIModelRecord(
+                                providerId = preset.providerId,
+                                serviceName = preset.displayName,
+                                baseUrl = preset.baseUrl,
+                                apiKey = presetApiKey,
+                                modelId = presetModelId.ifBlank { preset.defaultModelId },
+                                modelName = presetModelName.ifBlank { preset.defaultModelId },
+                                modelType = "LLM",
+                                isPreset = true,
+                                presetIconRes = preset.iconRes,
+                            )
+                        )
+                        importedModels = store.list()
+                        showPresetDialog = false
+                        resetPresetState()
+                    },
+                    enabled = presetModelId.isNotBlank(),
                 ) {
                     Text(stringResource(R.string.save))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDoubaoDialog = false }) {
+                TextButton(onClick = {
+                    showPresetDialog = false
+                    resetPresetState()
+                }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    // ========== 编辑模型弹窗 ==========
+    if (showEditDialog && editingModel != null) {
+        val model = editingModel!!
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text(stringResource(R.string.ai_edit_model)) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = editProviderId,
+                        onValueChange = { editProviderId = it },
+                        label = { Text(stringResource(R.string.ai_provider_id)) },
+                        supportingText = { Text(stringResource(R.string.ai_provider_id_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        enabled = !model.isPreset,
+                    )
+                    OutlinedTextField(
+                        value = editServiceName,
+                        onValueChange = { editServiceName = it },
+                        label = { Text(stringResource(R.string.ai_remark_name)) },
+                        supportingText = { Text(stringResource(R.string.ai_service_name_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        enabled = !model.isPreset,
+                    )
+                    OutlinedTextField(
+                        value = editBaseUrl,
+                        onValueChange = { editBaseUrl = it },
+                        label = { Text(stringResource(R.string.ai_base_url)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        enabled = !model.isPreset,
+                    )
+                    OutlinedTextField(
+                        value = editApiKey,
+                        onValueChange = { editApiKey = it },
+                        label = { Text(stringResource(R.string.ai_api_key)) },
+                        supportingText = { Text(stringResource(R.string.ai_api_key_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = editModelId,
+                        onValueChange = { editModelId = it },
+                        label = { Text(stringResource(R.string.ai_model_id)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = editModelName,
+                        onValueChange = { editModelName = it },
+                        label = { Text(stringResource(R.string.ai_model_remark)) },
+                        supportingText = { Text(stringResource(R.string.ai_model_name_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    if (!model.isPreset) {
+                        Text(
+                            text = stringResource(R.string.ai_model_type),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { editModelType = "LLM" },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (editModelType == "LLM") {
+                                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(stringResource(R.string.ai_model_type_llm))
+                            }
+                            OutlinedButton(
+                                onClick = { editModelType = "Embedding" },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (editModelType == "Embedding") {
+                                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(stringResource(R.string.ai_model_type_embedding))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        store.delete(model.id)
+                        store.add(
+                            AIModelRecord(
+                                id = model.id,
+                                providerId = editProviderId,
+                                serviceName = editServiceName,
+                                baseUrl = editBaseUrl,
+                                apiKey = editApiKey,
+                                modelId = editModelId,
+                                modelName = editModelName,
+                                modelType = editModelType,
+                                isPreset = model.isPreset,
+                                presetIconRes = model.presetIconRes,
+                            )
+                        )
+                        importedModels = store.list()
+                        showEditDialog = false
+                        resetEditState()
+                    },
+                    enabled = editProviderId.isNotBlank() && editBaseUrl.isNotBlank() && editModelId.isNotBlank(),
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showEditDialog = false
+                    resetEditState()
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             },
@@ -250,12 +514,69 @@ fun SettingAIapiScreen(
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                Text(
-                    text = "暂无已导入的模型",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
+                if (importedModels.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.ai_no_imported_models),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                } else {
+                    importedModels.forEachIndexed { index, model ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { openEditDialog(model) }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (model.presetIconRes != null) {
+                                Image(
+                                    painter = painterResource(id = model.presetIconRes),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "AI",
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = model.serviceName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = model.modelName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (index < importedModels.lastIndex) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -273,35 +594,65 @@ fun SettingAIapiScreen(
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showDoubaoDialog = true }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.doubao),
-                        contentDescription = null,
+                presetModels.forEachIndexed { index, preset ->
+                    Row(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                    )
-                    Text(
-                        text = stringResource(R.string.ai_doubao),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 16.dp),
-                    )
-                    Icon(
-                        Icons.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                            .fillMaxWidth()
+                            .clickable {
+                                currentPreset = preset
+                                presetModelId = preset.defaultModelId
+                                showPresetDialog = true
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Image(
+                            painter = painterResource(id = preset.iconRes),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                        Text(
+                            text = preset.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 16.dp),
+                        )
+                        Icon(
+                            Icons.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (index < presetModels.lastIndex) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+private data class PresetModel(
+    val displayName: String,
+    val providerId: String,
+    val baseUrl: String,
+    val defaultModelId: String,
+    val iconRes: Int,
+)
+
+private val presetModels = listOf(
+    PresetModel(
+        displayName = "豆包大模型",
+        providerId = "volcengine",
+        baseUrl = "https://ark.cn-beijing.volces.com/api/v3",
+        defaultModelId = "doubao-pro-4k",
+        iconRes = R.drawable.doubao,
+    ),
+)

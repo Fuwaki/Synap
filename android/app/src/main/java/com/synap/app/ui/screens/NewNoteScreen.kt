@@ -1,5 +1,7 @@
 package com.synap.app.ui.screens
 
+import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -54,6 +56,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -90,6 +93,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -138,6 +142,44 @@ private fun parseColorLocal(tag: String): Color? {
 
 data class CheckboxInfo(val range: IntRange, val isChecked: Boolean, val rect: Rect)
 
+data class CustomColor(val hue: Float, val name: String)
+
+private fun saveCustomColor(context: Context, color: CustomColor) {
+    val prefs = context.getSharedPreferences("custom_colors", Context.MODE_PRIVATE)
+    val existing = prefs.getString("colors", "[]") ?: "[]"
+    val arr = org.json.JSONArray(existing)
+    val obj = org.json.JSONObject().apply {
+        put("hue", color.hue.toDouble())
+        put("name", color.name)
+    }
+    arr.put(obj)
+    prefs.edit().putString("colors", arr.toString()).apply()
+}
+
+private fun loadCustomColors(context: Context): List<CustomColor> {
+    val prefs = context.getSharedPreferences("custom_colors", Context.MODE_PRIVATE)
+    val existing = prefs.getString("colors", "[]") ?: "[]"
+    val arr = org.json.JSONArray(existing)
+    return (0 until arr.length()).map { i ->
+        val obj = arr.getJSONObject(i)
+        CustomColor(
+            hue = obj.getDouble("hue").toFloat(),
+            name = obj.getString("name")
+        )
+    }
+}
+
+private fun deleteCustomColor(context: Context, index: Int) {
+    val prefs = context.getSharedPreferences("custom_colors", Context.MODE_PRIVATE)
+    val existing = prefs.getString("colors", "[]") ?: "[]"
+    val arr = org.json.JSONArray(existing)
+    val newArr = org.json.JSONArray()
+    (0 until arr.length()).forEach { i ->
+        if (i != index) newArr.put(arr.getJSONObject(i))
+    }
+    prefs.edit().putString("colors", newArr.toString()).apply()
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun NewNoteScreen(
@@ -158,6 +200,9 @@ fun NewNoteScreen(
 
     var showColorDialog by remember { mutableStateOf(false) }
     var localColorHue by remember { mutableFloatStateOf(uiState.noteColorHue ?: 210f) }
+    var showAddPresetDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var customColors by remember { mutableStateOf(loadCustomColors(context)) }
 
     LaunchedEffect(uiState.noteColorHue) {
         if (uiState.noteColorHue != null) localColorHue = uiState.noteColorHue!!
@@ -354,7 +399,13 @@ fun NewNoteScreen(
                             localHue = localColorHue,
                             onLocalHueChange = { localColorHue = it },
                             onColorChange = { onNoteColorHueChange(it) },
-                            onClear = { onNoteColorHueChange(null) }
+                            onClear = { onNoteColorHueChange(null) },
+                            customColors = customColors,
+                            onAddPreset = { showAddPresetDialog = true },
+                            onDeleteCustomColor = { index ->
+                                deleteCustomColor(context, index)
+                                customColors = loadCustomColors(context)
+                            }
                         )
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     }
@@ -590,10 +641,10 @@ fun NewNoteScreen(
                                                         val insert = if (isCheckbox) "- [ ] " else "- "
                                                         val resultingText = newText.substring(0, newValue.selection.start) + insert + newText.substring(newValue.selection.start)
                                                         finalValue = TextFieldValue(resultingText, TextRange(newValue.selection.start + insert.length))
-                                                    }
-                                                }
-                                            }
-                                        }
+            }
+        }
+    }
+}
 
                                         if (newText.length == oldText.length - 1 && newValue.selection.start == textFieldValue.selection.start - 1) {
                                             val deletedIndex = newValue.selection.start
@@ -794,6 +845,12 @@ fun NewNoteScreen(
                             onClear = {
                                 onNoteColorHueChange(null)
                                 showColorDialog = false
+                            },
+                            customColors = customColors,
+                            onAddPreset = { showAddPresetDialog = true },
+                            onDeleteCustomColor = { index ->
+                                deleteCustomColor(context, index)
+                                customColors = loadCustomColors(context)
                             }
                         )
                     },
@@ -802,6 +859,19 @@ fun NewNoteScreen(
                         TextButton(onClick = { showColorDialog = false }) {
                             Text("关闭")
                         }
+                    }
+                )
+            }
+
+            // 增加预设颜色弹窗
+            if (showAddPresetDialog) {
+                AddPresetColorDialog(
+                    initialHue = localColorHue,
+                    onDismiss = { showAddPresetDialog = false },
+                    onSave = { hue, name ->
+                        saveCustomColor(context, CustomColor(hue, name))
+                        customColors = loadCustomColors(context)
+                        showAddPresetDialog = false
                     }
                 )
             }
@@ -816,24 +886,11 @@ private fun NoteColorPickerContent(
     onLocalHueChange: (Float) -> Unit,
     onColorChange: (Float) -> Unit,
     onClear: () -> Unit,
+    customColors: List<CustomColor>,
+    onAddPreset: () -> Unit,
+    onDeleteCustomColor: (Int) -> Unit,
 ) {
     Column {
-        val previewColor = NoteColorUtil.hueToColor(localHue)
-        Slider(
-            value = localHue,
-            onValueChange = { hue ->
-                onLocalHueChange(hue)
-                onColorChange(hue)
-            },
-            valueRange = 0f..360f,
-            colors = SliderDefaults.colors(
-                thumbColor = previewColor,
-                activeTrackColor = previewColor,
-            )
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         val presetHues = listOf(
             0f to "红",
             30f to "橙",
@@ -843,12 +900,11 @@ private fun NoteColorPickerContent(
             270f to "紫",
         )
 
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            presetHues.forEach { (hue, label) ->
+            for ((hue, label) in presetHues) {
                 val color = NoteColorUtil.hueToColor(hue)
                 val isSelected = currentHue != null && (currentHue - hue).let { it in -2f..2f }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -870,13 +926,107 @@ private fun NoteColorPickerContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        if (customColors.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                for ((index, customColor) in customColors.withIndex()) {
+                    val color = NoteColorUtil.hueToColor(customColor.hue)
+                    val isSelected = currentHue != null && (currentHue - customColor.hue).let { it in -2f..2f }
+                    InputChip(
+                        selected = isSelected,
+                        onClick = {
+                            onLocalHueChange(customColor.hue)
+                            onColorChange(customColor.hue)
+                        },
+                        label = { Text(customColor.name) },
+                        leadingIcon = { Box(modifier = Modifier.size(12.dp).background(color, CircleShape)) },
+                        trailingIcon = { Icon(Icons.Filled.Close, null, Modifier.size(InputChipDefaults.AvatarSize).clickable { onDeleteCustomColor(index) }) }
+                    )
+                }
+                InputChip(selected = false, onClick = onAddPreset, label = { Text("增加预设颜色") }, trailingIcon = { Icon(Icons.Filled.Add, null, Modifier.size(16.dp)) })
+            }
+        } else {
+            Spacer(modifier = Modifier.height(8.dp))
+            InputChip(selected = false, onClick = onAddPreset, label = { Text("增加预设颜色") }, trailingIcon = { Icon(Icons.Filled.Add, null, Modifier.size(16.dp)) })
+        }
 
-        TextButton(
-            onClick = onClear,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("无颜色")
+        if (currentHue != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onClear,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text("清除颜色")
+            }
         }
     }
+}
+
+@Composable
+private fun AddPresetColorDialog(
+    initialHue: Float,
+    onDismiss: () -> Unit,
+    onSave: (Float, String) -> Unit,
+) {
+    var hue by remember { mutableFloatStateOf(initialHue) }
+    var name by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("增加预设颜色") },
+        text = {
+            Column {
+                val previewColor = NoteColorUtil.hueToColor(hue)
+                Slider(
+                    value = hue,
+                    onValueChange = { hue = it },
+                    valueRange = 0f..360f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = previewColor,
+                        activeTrackColor = previewColor,
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { if (it.length <= 10) name = it },
+                    label = { Text("颜色名称（选填）") },
+                    placeholder = { Text(hue.toInt().toString()) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val finalName = name.ifBlank { hue.toInt().toString() }
+                    if (finalName.length > 10) {
+                        Toast.makeText(context, "颜色名称超出10个字符", Toast.LENGTH_SHORT).show()
+                        return@TextButton
+                    }
+                    onSave(hue, finalName)
+                },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }

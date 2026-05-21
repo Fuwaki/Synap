@@ -6,6 +6,9 @@ import android.provider.CalendarContract
 import android.widget.Toast
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
@@ -250,7 +253,7 @@ fun buildMarkdownAnnotatedString(
 }
 
 @Suppress("OPT_IN_USAGE", "OPT_IN_USAGE_FUTURE_ERROR")
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun NoteDetailScreen(
     uiState: DetailUiState,
@@ -264,6 +267,8 @@ fun NoteDetailScreen(
     onLoadMoreReplies: () -> Unit,
     onRefresh: () -> Unit,
     onExportShare: suspend (List<String>) -> ByteArray,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
@@ -390,6 +395,16 @@ fun NoteDetailScreen(
                 transformOrigin = TransformOrigin(1f, 0.5f) // 缩放原点在右侧中心
                 shape = RoundedCornerShape(32.dp * backProgress) // 随进度增加圆角
                 clip = true
+            }
+            .let { modifier ->
+                if (sharedTransitionScope != null && animatedVisibilityScope != null && uiState.note?.id != null) {
+                    with(sharedTransitionScope) {
+                        modifier.sharedBounds(
+                            sharedContentState = rememberSharedContentState(key = "note_card_${uiState.note!!.id}"),
+                            animatedVisibilityScope = animatedVisibilityScope,
+                        )
+                    }
+                } else modifier
             },
         topBar = {
             TopAppBar(

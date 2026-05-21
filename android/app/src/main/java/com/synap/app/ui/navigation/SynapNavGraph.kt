@@ -183,19 +183,21 @@ fun SynapNavGraph(
                         viewModel.events.collect { if (it is DetailEvent.NavigateBackAfterDelete) navController.popBackStack() }
                     }
 
-                    NoteDetailScreen(
-                        uiState = uiState,
-                        onNavigateBack = { navController.popBackStack() },
-                        onNavigateHome = { navController.popBackStack("home", inclusive = false) },
-                        onDelete = viewModel::deleteCurrentNote,
-                        onReply = { uiState.note?.let { note -> navController.navigate(editorRoute(parentId = note.id, parentSummary = note.content)) } },
-                        onEdit = { uiState.note?.let { note -> navController.navigate(editorRoute(editNoteId = note.id)) } },
-                        onOpenRelatedNote = { noteId -> navController.navigate(detailRoute(noteId)) },
-                        onOpenThreadReader = { noteId -> navController.navigate(threadReaderRoute(noteId)) },
-                        onLoadMoreReplies = viewModel::loadMoreReplies,
-                        onRefresh = viewModel::refreshAll,
-                        onExportShare = viewModel::exportShare,
-                    )
+    NoteDetailScreen(
+        uiState = uiState,
+        onNavigateBack = { navController.popBackStack() },
+        onNavigateHome = { navController.popBackStack("home", inclusive = false) },
+        onDelete = viewModel::deleteCurrentNote,
+        onReply = { uiState.note?.let { note -> navController.navigate(editorRoute(parentId = note.id, parentSummary = note.content)) } },
+        onEdit = { uiState.note?.let { note -> navController.navigate(editorRoute(editNoteId = note.id)) } },
+        onOpenRelatedNote = { noteId -> navController.navigate(detailRoute(noteId)) },
+        onOpenThreadReader = { noteId -> navController.navigate(threadReaderRoute(noteId)) },
+        onLoadMoreReplies = viewModel::loadMoreReplies,
+        onRefresh = viewModel::refreshAll,
+        onExportShare = viewModel::exportShare,
+        sharedTransitionScope = this@SharedTransitionLayout,
+        animatedVisibilityScope = this@composable,
+    )
                 }
 
                 composable(

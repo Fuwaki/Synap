@@ -651,7 +651,9 @@ fun HomeScreen(
                             if (!note.isDeleted) showUndoForDeletedNote(note) else onToggleDeleted(note)
                         },
                         onReplyToNote = onReplyToNote,
-                        bottomInset = bottomInset
+                        bottomInset = bottomInset,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = navVisibilityScope,
                     )
                 } else {
                     HomeNoteFeed(
@@ -667,6 +669,8 @@ fun HomeScreen(
                             if (!note.isDeleted) showUndoForDeletedNote(note) else onToggleDeleted(note)
                         },
                         onReplyToNote = onReplyToNote,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = navVisibilityScope,
                     )
                 }
             }

@@ -427,11 +427,10 @@ fun NoteDetailScreen(
         bottomBar = {
             // ========== 手机端：沉浸式固定底部工具栏 ==========
             if (uiState.note != null && !isLargeScreen) {
-                Surface(
-                    color = primaryColorForTheme.copy(alpha = 0.15f),
-                    tonalElevation = 3.dp,
-                    shadowElevation = 8.dp,
-                    modifier = Modifier.fillMaxWidth()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(primaryColorForTheme.copy(alpha = 0.15f))
                 ) {
                     Row(
                         modifier = Modifier
